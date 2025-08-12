@@ -49,13 +49,24 @@ update_system() {
 # 2. Instalar dependências básicas
 install_dependencies() {
     log "Instalando dependências..."
+    
+    # Instalar apenas dependências básicas
     apt-get install -y \
         python3 python3-pip python3-venv \
         postgresql postgresql-contrib \
         redis-server \
         nginx \
-        git curl wget \
-        nodejs npm
+        git curl wget
+    
+    # Verificar Node.js e npm
+    if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+        log_error "Node.js ou npm não encontrados. Por favor, instale manualmente:"
+        log_error "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -"
+        log_error "sudo apt-get install -y nodejs"
+        exit 1
+    else
+        log "Node.js: $(node --version), npm: $(npm --version)"
+    fi
 }
 
 # 3. Configurar usuário
