@@ -231,8 +231,16 @@ install_python() {
     # Criar link simbólico
     ln -sf /usr/bin/python3.11 /usr/bin/python3
     
-    # Atualizar pip
-    python3 -m pip install --upgrade pip
+    # Atualizar pip (com tratamento de erro)
+    log_warning "Atualizando pip (ignorando erros de dependências do sistema)..."
+    python3 -m pip install --upgrade pip --break-system-packages 2>/dev/null || {
+        log_warning "Upgrade do pip falhou (normal no Ubuntu), usando pip existente"
+        # Verificar se pip funciona
+        if ! python3 -m pip --version &>/dev/null; then
+            log_error "Pip não está funcionando, reinstalando..."
+            curl -sSL https://bootstrap.pypa.io/get-pip.py | python3 --break-system-packages
+        fi
+    }
     
     log "Python $(python3 --version) instalado"
 }
