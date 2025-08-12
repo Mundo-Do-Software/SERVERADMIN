@@ -218,20 +218,32 @@ prompt_config() {
 update_system() {
     log "Atualizando sistema..."
     
-    # Corrigir problema do apt_pkg se existir
+    # Corrigir problema do apt_pkg e command-not-found
     if ! python3 -c "import apt_pkg" 2>/dev/null; then
         log_warning "Corrigindo problema do apt_pkg..."
         apt install -y --reinstall python3-apt
+        
+        # Se ainda tiver problema, desabilitar temporariamente command-not-found
+        if ! python3 -c "import apt_pkg" 2>/dev/null; then
+            log_warning "Desabilitando temporariamente command-not-found para evitar erros..."
+            chmod -x /usr/lib/cnf-update-db 2>/dev/null || true
+        fi
     fi
     
     # Limpar cache do apt para evitar problemas
     apt clean
     apt autoremove -y
     
-    # Atualizar sistema
-    apt update -qq
-    apt upgrade -y -qq
+    # Atualizar sistema (ignorando erros do command-not-found)
+    APT_LISTCHANGES_FRONTEND=none apt update -qq 2>/dev/null || apt update -qq
+    APT_LISTCHANGES_FRONTEND=none apt upgrade -y -qq 2>/dev/null || apt upgrade -y -qq
     apt install -y software-properties-common curl wget git unzip bc
+    
+    # Reabilitar command-not-found se foi desabilitado
+    if [[ ! -x /usr/lib/cnf-update-db ]]; then
+        log_warning "Reabilitando command-not-found..."
+        chmod +x /usr/lib/cnf-update-db 2>/dev/null || true
+    fi
 }
 
 install_python() {
