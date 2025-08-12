@@ -72,14 +72,39 @@ Uma solução completa para administração de servidores Ubuntu com interface w
 
 ### 📥 Instalação sem Docker (Recomendada para Produção)
 
+#### 🔑 Repositório Privado - Instalação via SSH
+
+Como este é um repositório privado, você precisará configurar acesso SSH:
+
 ```bash
-# Download do script de instalação
-wget https://raw.githubusercontent.com/Mundo-Do-Software/SERVERADMIN/main/install.sh
+# 1. Gerar chave SSH (se não tiver)
+ssh-keygen -t ed25519 -C "seu-email@dominio.com"
 
-# Dar permissão de execução
-chmod +x install.sh
+# 2. Adicionar chave pública ao GitHub
+cat ~/.ssh/id_ed25519.pub
+# Copie e adicione em: https://github.com/settings/ssh/new
 
-# Executar instalação interativa
+# 3. Testar conexão SSH
+ssh -T git@github.com
+
+# 4. Clonar repositório via SSH
+git clone git@github.com:Mundo-Do-Software/SERVERADMIN.git
+cd SERVERADMIN
+
+# 5. Executar instalação
+sudo bash install.sh
+```
+
+#### 🌐 Instalação Alternativa (HTTPS)
+
+Se preferir usar HTTPS (solicitará credenciais):
+
+```bash
+# Clone via HTTPS
+git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git
+cd SERVERADMIN
+
+# Executar instalação
 sudo bash install.sh
 ```
 
@@ -143,9 +168,126 @@ cd SERVERADMIN
 
 ⚠️ **IMPORTANTE**: Altere essas credenciais após o primeiro login!
 
-### 🎛️ Gerenciamento Pós-Instalação
+### 🛠️ Correção de Problemas de Build
 
-Após a instalação, use o comando `serveradmin` para gerenciar o sistema:
+Se encontrar problemas durante a instalação (ex: erros de build do Angular), use nosso script de correção:
+
+```bash
+# Ir para o diretório onde você já clonou o repositório
+cd ~/temp/SERVERADMIN
+
+# Criar script de correção
+cat > quick-fix.sh << 'EOF'
+#!/bin/bash
+set -e
+
+# Cores
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[$(date +'%H:%M:%S')] $1${NC}"; }
+log_warning() { echo -e "${YELLOW}[WARNING] $1${NC}"; }
+log_error() { echo -e "${RED}[ERROR] $1${NC}"; }
+
+# Trabalhar no diretório atual (~/temp/SERVERADMIN)
+FRONTEND_DIR="$(pwd)/frontend/ubuntu-server-admin"
+
+if [[ ! -d "$FRONTEND_DIR" ]]; then
+    log_error "Diretório do frontend não encontrado: $FRONTEND_DIR"
+    log_error "Certifique-se de estar em ~/temp/SERVERADMIN"
+    exit 1
+fi
+
+cd "$FRONTEND_DIR"
+log "Corrigindo problemas do Angular em $FRONTEND_DIR..."
+
+# 1. Corrigir styles.scss
+if grep -q "@import" src/styles.scss 2>/dev/null; then
+    log "Corrigindo styles.scss..."
+    sed -i "s/@import 'styles\/theme';/@use 'styles\/theme';/g" src/styles.scss
+fi
+
+# 2. Verificar logs component
+if [[ ! -f "src/app/modules/logs/logs.component.ts" ]]; then
+    log "Criando logs component..."
+    mkdir -p src/app/modules/logs
+    cat > src/app/modules/logs/logs.component.ts << 'EOFC'
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+
+@Component({
+  selector: 'app-logs',
+  standalone: true,
+  imports: [CommonModule],
+  template: \`
+    <div class="module-container">
+      <div class="page-header">
+        <h2>📄 System Logs</h2>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <p>System logs will be displayed here.</p>
+        </div>
+      </div>
+    </div>
+  \`,
+  styles: [\`
+    .module-container { max-width: 1200px; margin: 0 auto; }
+    .page-header { margin-bottom: 30px; padding: 20px 0; }
+    .page-header h2 { margin: 0; color: #2d3748; }
+  \`]
+})
+export class LogsComponent implements OnInit {
+  ngOnInit(): void { }
+}
+EOFC
+fi
+
+# 3. Limpar e reinstalar
+log "Limpando cache..."
+rm -rf node_modules package-lock.json .angular/cache 2>/dev/null || true
+
+log "Reinstalando dependências..."
+npm install
+
+# 4. Build
+log "Compilando aplicação..."
+if npx ng build --aot=false --optimization=false; then
+    log "✅ Build concluído"
+else
+    log_error "Build falhou"
+    exit 1
+fi
+
+# 5. Copiar arquivos para o servidor (precisa de sudo)
+if [[ -d "dist" ]]; then
+    BUILD_DIR=$(find dist/ -type d -maxdepth 1 | grep -v "^dist$" | head -1)
+    if [[ -n "$BUILD_DIR" && -f "$BUILD_DIR/index.html" ]]; then
+        log "Copiando para servidor web (requer sudo)..."
+        sudo rm -rf /var/www/html/serveradmin
+        sudo mkdir -p /var/www/html/serveradmin
+        sudo cp -r "$BUILD_DIR"/* /var/www/html/serveradmin/
+        sudo chown -R www-data:www-data /var/www/html/serveradmin
+        log "✅ Arquivos copiados"
+    fi
+fi
+
+# 6. Reiniciar serviços
+if systemctl is-active --quiet ubuntu-server-admin 2>/dev/null; then
+    log "Reiniciando serviços..."
+    sudo systemctl restart ubuntu-server-admin nginx
+fi
+
+log "🎉 Correção concluída!"
+log "Teste: curl http://localhost/"
+EOF
+
+# Executar correção
+chmod +x quick-fix.sh
+./quick-fix.sh
+```
 
 ```bash
 # Gerenciamento básico
