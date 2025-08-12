@@ -158,9 +158,18 @@ EOF
     ln -sf /etc/nginx/sites-available/serveradmin /etc/nginx/sites-enabled/
     rm -f /etc/nginx/sites-enabled/default
     
-    # Testar e recarregar
+    # Testar configuração
     nginx -t
-    systemctl reload nginx
+    
+    # Iniciar NGINX se não estiver rodando, senão recarregar
+    if ! systemctl is-active nginx &>/dev/null; then
+        systemctl start nginx
+        systemctl enable nginx
+        log "NGINX iniciado"
+    else
+        systemctl reload nginx
+        log "NGINX recarregado"
+    fi
 }
 
 # 7. Criar serviço systemd
