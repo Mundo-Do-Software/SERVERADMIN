@@ -676,9 +676,11 @@ setup_frontend() {
     cd "$INSTALL_DIR/frontend/ubuntu-server-admin"
     
     # Instalar dependências
+    log_info "Instalando dependências do Node.js..."
     sudo -u "$SERVICE_USER" npm install
     
     # Configurar ambiente de produção
+    log_info "Configurando ambiente de produção..."
     sudo -u "$SERVICE_USER" cat > src/environments/environment.prod.ts << EOF
 export const environment = {
   production: true,
@@ -686,16 +688,89 @@ export const environment = {
 };
 EOF
     
-    # Build para produção
-    sudo -u "$SERVICE_USER" npm run build
+    # Limpar cache do Angular se necessário
+    log_info "Limpando cache do Angular..."
+    sudo -u "$SERVICE_USER" npx ng cache clean 2>/dev/null || true
+    
+    # Build para produção com retry
+    log_info "Compilando aplicação Angular para produção..."
+    local build_attempts=0
+    local max_attempts=3
+    
+    while [ $build_attempts -lt $max_attempts ]; do
+        build_attempts=$((build_attempts + 1))
+        log_info "Tentativa de build $build_attempts/$max_attempts..."
+        
+        if sudo -u "$SERVICE_USER" npm run build -- --configuration=production 2>&1; then
+            log "Build do Angular concluído com sucesso"
+            break
+        else
+            log_warning "Build falhou na tentativa $build_attempts"
+            
+            if [ $build_attempts -eq $max_attempts ]; then
+                log_error "Build do Angular falhou após $max_attempts tentativas"
+                log_error "Verifique os logs acima para detalhes do erro"
+                
+                # Tentar build básico como fallback
+                log_warning "Tentando build básico como fallback..."
+                if sudo -u "$SERVICE_USER" npx ng build --aot=false --optimization=false 2>&1; then
+                    log_warning "Build básico concluído (sem otimizações)"
+                    break
+                else
+                    log_error "Build básico também falhou. Abortando instalação."
+                    exit 1
+                fi
+            else
+                log_info "Aguardando 5 segundos antes da próxima tentativa..."
+                sleep 5
+                
+                # Limpar node_modules e reinstalar em caso de erro persistente
+                if [ $build_attempts -eq 2 ]; then
+                    log_warning "Limpando node_modules e reinstalando dependências..."
+                    sudo -u "$SERVICE_USER" rm -rf node_modules package-lock.json
+                    sudo -u "$SERVICE_USER" npm install
+                fi
+            fi
+        fi
+    done
+    
+    # Verificar se o build foi gerado
+    if [[ ! -d "dist/ubuntu-server-admin" ]]; then
+        log_error "Diretório de build não foi gerado. Verificando estrutura..."
+        
+        # Listar conteúdo do diretório dist
+        if [[ -d "dist" ]]; then
+            log_info "Conteúdo do diretório dist:"
+            ls -la dist/
+            
+            # Procurar por qualquer diretório gerado
+            BUILD_DIR=$(find dist/ -type d -name "*ubuntu*" | head -1)
+            if [[ -n "$BUILD_DIR" ]]; then
+                log_warning "Usando diretório de build encontrado: $BUILD_DIR"
+                mv "$BUILD_DIR" dist/ubuntu-server-admin/
+            fi
+        fi
+        
+        if [[ ! -d "dist/ubuntu-server-admin" ]]; then
+            log_error "Falha crítica: Não foi possível gerar build do frontend"
+            exit 1
+        fi
+    fi
     
     # Mover arquivos para diretório do NGINX
+    log_info "Instalando arquivos do frontend..."
     rm -rf /var/www/html/serveradmin
     mkdir -p /var/www/html/serveradmin
     cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/
     chown -R www-data:www-data /var/www/html/serveradmin
     
-    log "Frontend compilado e configurado"
+    # Verificar se os arquivos foram copiados corretamente
+    if [[ ! -f "/var/www/html/serveradmin/index.html" ]]; then
+        log_error "Falha ao copiar arquivos do frontend"
+        exit 1
+    fi
+    
+    log "Frontend compilado e configurado com sucesso"
 }
 
 # ==============================================================================
@@ -903,17 +978,51 @@ case "$1" in
             git remote set-url origin git@github.com:Mundo-Do-Software/SERVERADMIN.git
         fi
         
+        echo "Atualizando código..."
         git pull
+        
+        echo "Atualizando backend..."
         cd backend
         sudo -u serveradmin bash -c "source venv/bin/activate && pip install -r requirements.txt"
+        
+        echo "Atualizando frontend..."
         cd ../frontend/ubuntu-server-admin
         sudo -u serveradmin npm install
-        sudo -u serveradmin npm run build
-        cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/
-        chown -R www-data:www-data /var/www/html/serveradmin
+        
+        # Build com retry
+        echo "Compilando frontend..."
+        if sudo -u serveradmin npm run build -- --configuration=production; then
+            echo "✅ Build do frontend concluído"
+        else
+            echo "⚠️ Build otimizado falhou, tentando build básico..."
+            if sudo -u serveradmin npx ng build --aot=false --optimization=false; then
+                echo "✅ Build básico concluído"
+            else
+                echo "❌ Falha no build do frontend"
+                exit 1
+            fi
+        fi
+        
+        # Verificar e copiar arquivos
+        if [[ -d "dist" ]]; then
+            BUILD_DIR=$(find dist/ -type d | head -2 | tail -1)  # Pegar primeiro subdiretório
+            if [[ -n "$BUILD_DIR" && -f "$BUILD_DIR/index.html" ]]; then
+                cp -r "$BUILD_DIR"/* /var/www/html/serveradmin/
+                chown -R www-data:www-data /var/www/html/serveradmin
+                echo "✅ Frontend atualizado"
+            else
+                echo "❌ Arquivos de build não encontrados"
+                exit 1
+            fi
+        else
+            echo "❌ Diretório dist não encontrado"
+            exit 1
+        fi
+        
+        echo "Reiniciando serviços..."
         systemctl restart ubuntu-server-admin
         systemctl reload nginx
-        echo "Ubuntu Server Admin atualizado"
+        echo "✅ Ubuntu Server Admin atualizado com sucesso"
         ;;
     health)
         echo "=== Status dos Serviços ==="
