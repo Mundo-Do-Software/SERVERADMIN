@@ -757,12 +757,34 @@ EOF
         fi
     fi
     
+    # Verificar se o build foi criado
+    if [[ ! -d "dist/ubuntu-server-admin" ]]; then
+        log_error "Diretório dist/ubuntu-server-admin não encontrado após o build"
+        log_error "Conteúdo do diretório atual:"
+        ls -la
+        if [[ -d "dist" ]]; then
+            log_error "Conteúdo do diretório dist:"
+            ls -la dist/
+        fi
+        exit 1
+    fi
+    
     # Mover arquivos para diretório do NGINX
     log_info "Instalando arquivos do frontend..."
     rm -rf /var/www/html/serveradmin
     mkdir -p /var/www/html/serveradmin
-    cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/
-    chown -R www-data:www-data /var/www/html/serveradmin
+    
+    # Copiar arquivos com verificação de erro
+    if cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/ 2>&1; then
+        chown -R www-data:www-data /var/www/html/serveradmin
+        log_info "Arquivos copiados com sucesso"
+    else
+        log_error "Falha ao executar comando cp"
+        log_error "Verificando permissões e conteúdo:"
+        ls -la dist/ubuntu-server-admin/
+        ls -la /var/www/html/
+        exit 1
+    fi
     
     # Verificar se os arquivos foram copiados corretamente
     if [[ ! -f "/var/www/html/serveradmin/index.html" ]]; then
