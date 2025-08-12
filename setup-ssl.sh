@@ -48,49 +48,29 @@ fix_certbot() {
     log "Certbot reinstalado via snap"
 }
 
-# 2. Configurar NGINX para SSL
-configure_nginx_ssl() {
-    log "Configurando NGINX para SSL..."
+# 2. Configurar NGINX temporariamente (apenas HTTP)
+configure_nginx_temp() {
+    log "Configurando NGINX temporariamente para HTTP..."
     
-    cat > /etc/nginx/sites-available/serveradmin << EOF
+    cat > /etc/nginx/sites-available/serveradmin << 'EOF'
 server {
     listen 80;
-    server_name $DOMAIN;
-    return 301 https://\$server_name\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN;
+    server_name _;
     root /var/www/html/serveradmin;
     index index.html;
 
-    # SSL será configurado pelo certbot
-    
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    
     # Frontend
     location / {
-        try_files \$uri \$uri/ /index.html;
+        try_files $uri $uri/ /index.html;
     }
 
     # API
     location /api/ {
         proxy_pass http://127.0.0.1:8000/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_buffering off;
-    }
-
-    # Security
-    location ~ /\. {
-        deny all;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     # Logs
@@ -101,79 +81,22 @@ EOF
     
     # Testar configuração
     nginx -t
+    systemctl reload nginx
 }
 
 # 3. Obter certificado SSL
 get_ssl_certificate() {
     log "Obtendo certificado SSL..."
     
-    # Parar NGINX temporariamente para o certbot
-    systemctl stop nginx
-    
-    # Obter certificado usando standalone
-    if certbot certonly --standalone \
+    # Usar certbot com plugin nginx
+    if certbot --nginx \
         --email "$EMAIL" \
         --agree-tos \
         --no-eff-email \
+        --redirect \
         -d "$DOMAIN"; then
         
-        log "Certificado SSL obtido com sucesso"
-        
-        # Configurar NGINX com SSL
-        cat > /etc/nginx/sites-available/serveradmin << EOF
-server {
-    listen 80;
-    server_name $DOMAIN;
-    return 301 https://\$server_name\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN;
-    root /var/www/html/serveradmin;
-    index index.html;
-
-    # SSL Configuration
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-    
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    
-    # Frontend
-    location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    # API
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_buffering off;
-    }
-
-    # Security
-    location ~ /\. {
-        deny all;
-    }
-
-    # Logs
-    access_log /var/log/nginx/serveradmin.access.log;
-    error_log /var/log/nginx/serveradmin.error.log;
-}
-EOF
-        
-        # Testar e iniciar NGINX
-        nginx -t
-        systemctl start nginx
+        log "Certificado SSL obtido e NGINX configurado automaticamente"
         
         # Configurar renovação automática
         systemctl enable certbot.timer
@@ -183,32 +106,7 @@ EOF
         
     else
         log_error "Falha ao obter certificado SSL"
-        
-        # Restaurar configuração HTTP
-        cat > /etc/nginx/sites-available/serveradmin << 'EOF'
-server {
-    listen 80;
-    server_name _;
-    root /var/www/html/serveradmin;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-EOF
-        
-        nginx -t
-        systemctl start nginx
-        log_warning "Fallback para HTTP configurado"
+        log_warning "Mantendo configuração HTTP"
     fi
 }
 
@@ -223,7 +121,7 @@ main() {
     echo ""
     
     fix_certbot
-    configure_nginx_ssl
+    configure_nginx_temp
     get_ssl_certificate
     
     echo ""
