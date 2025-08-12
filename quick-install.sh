@@ -93,8 +93,8 @@ setup_application() {
     # Limpar diretório se existir
     rm -rf "$INSTALL_DIR"
     
-    # Clonar repositório
-    git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"
+    # Clonar repositório usando SSH (chave já configurada)
+    git clone git@github.com:Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"
     chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
     
     # Configurar backend
