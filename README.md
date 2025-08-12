@@ -1,14 +1,96 @@
-# Ubuntu Server Admin
+# 🖥️ Ubuntu Server Admin
 
-Sistema de administração de servidor Ubuntu com interface web moderna.
+Uma solução completa para administração de servidores Ubuntu com interface web moderna e APIs robustas.
 
-## Arquitetura
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Angular](https://img.shields.io/badge/Angular-DD0031?style=for-the-badge&logo=angular&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 
-- **Frontend**: Angular 17+ com Material Design
-- **Backend**: Python FastAPI
-- **Banco de Dados**: SQLite (desenvolvimento) / PostgreSQL (produção)
-- **Autenticação**: JWT tokens
-- **Comunicação**: RESTful APIs
+## 🚀 Funcionalidades Implementadas
+
+### 🔒 Segurança e Autenticação
+- ✅ **JWT Authentication**: Sistema seguro de autenticação
+- ✅ **UFW Firewall**: Gerenciamento completo do firewall Ubuntu
+- ✅ **Fail2Ban**: Proteção contra ataques de força bruta
+- ✅ **SSL/TLS**: Gerenciamento de certificados com Certbot
+
+### 🌐 Gerenciamento de Rede  
+- ✅ **Monitoramento em Tempo Real**: Status das interfaces de rede
+- ✅ **Estatísticas de Tráfego**: Upload/download com dados reais via psutil
+- ✅ **Teste de Conectividade**: Ferramentas de ping integradas
+- ✅ **Configuração DNS**: Visualização de servidores DNS
+- ✅ **Conexões Ativas**: Monitoramento de processos e portas
+
+### 🔧 Administração de Sistema
+- ✅ **Gerenciamento de Usuários**: CRUD completo de usuários do sistema
+- ✅ **Controle de Serviços**: Start/stop/restart de serviços systemd
+- ✅ **Monitoramento de Sistema**: CPU, RAM, disco e processos
+- ✅ **Logs do Sistema**: Visualização de logs em tempo real
+
+### 📦 Gerenciamento de Pacotes
+- ✅ **APT Integration**: Instalação/remoção de pacotes
+- ✅ **Pacotes Essenciais**: Stack completo (NGINX, MySQL, PHP, Node.js, Docker)
+- ✅ **Atualizações**: Sistema de updates automatizado
+- ✅ **Versões**: Controle de versões de pacotes
+
+### 🌐 Servidor Web
+- ✅ **NGINX Administration**: Configuração completa do NGINX
+- ✅ **Virtual Hosts**: Gerenciamento de sites e domínios
+- ✅ **SSL Certificates**: Criação e renovação automática via Certbot
+- ✅ **Configurações**: Editor de configurações com validação
+
+## 🛠️ Stack Tecnológica
+
+### Backend
+- **FastAPI**: Framework Python moderno e rápido
+- **psutil**: Monitoramento de sistema em tempo real
+- **JWT**: Autenticação segura
+- **SQLAlchemy**: ORM para banco de dados
+- **Redis**: Cache e sessões
+
+### Frontend
+- **Angular 18**: Framework frontend moderno
+- **TypeScript**: Tipagem estática
+- **SCSS**: Estilização avançada com tema claro/escuro
+- **Responsive Design**: Mobile-first
+
+### DevOps
+- **Docker**: Containerização completa
+- **Docker Compose**: Orquestração de serviços
+- **NGINX**: Proxy reverso
+- **PostgreSQL**: Banco de dados
+- **Redis**: Cache e sessões
+
+## 🚀 Quick Start
+
+### Pré-requisitos
+- Docker e Docker Compose
+- Git
+- 4GB RAM mínimo
+
+### Instalação Rápida
+
+```bash
+# Clone o repositório
+git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git
+cd SERVERADMIN
+
+# Inicie o ambiente de desenvolvimento
+./docker-simple.ps1 dev
+# ou no Linux/Mac:
+# chmod +x docker-manager.sh && ./docker-manager.sh dev
+
+# Acesse a aplicação
+# Frontend: http://localhost:4200
+# Backend API: http://localhost:8000
+# Docs: http://localhost:8000/docs
+```
+
+### Credenciais Padrão
+- **Usuário**: `admin`
+- **Senha**: `admin123`
 
 ## Funcionalidades
 
