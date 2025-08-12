@@ -1,0 +1,222 @@
+<div class="dashboard-container">
+  <div class="dashboard-header">
+    <h1>Dashboard do Sistema</h1>
+    <p>Visão geral do servidor Ubuntu</p>
+  </div>
+
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-header">
+        <div class="metric-icon cpu-icon">
+          <i class="fas fa-microchip"></i>
+        </div>
+      </div>
+      <div class="metric-value">{{ systemInfo?.cpu_usage || 0 }}%</div>
+      <div class="metric-label">Uso da CPU</div>
+      <div class="metric-trend positive">
+        <i class="fas fa-arrow-up"></i>
+        <span>2.1% desde ontem</span>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <div class="metric-icon memory-icon">
+          <i class="fas fa-memory"></i>
+        </div>
+      </div>
+      <div class="metric-value">{{ systemInfo?.memory_usage || 0 }}%</div>
+      <div class="metric-label">Uso da Memória</div>
+      <div class="metric-trend negative">
+        <i class="fas fa-arrow-down"></i>
+        <span>0.5% desde ontem</span>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <div class="metric-icon disk-icon">
+          <i class="fas fa-hdd"></i>
+        </div>
+      </div>
+      <div class="metric-value">{{ systemInfo?.disk_usage || 0 }}%</div>
+      <div class="metric-label">Uso do Disco</div>
+      <div class="metric-trend positive">
+        <i class="fas fa-arrow-up"></i>
+        <span>1.2% desde ontem</span>
+      </div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-header">
+        <div class="metric-icon temperature-icon">
+          <i class="fas fa-thermometer-half"></i>
+        </div>
+      </div>
+      <div class="metric-value">{{ systemInfo?.temperature || 45 }}°C</div>
+      <div class="metric-label">Temperatura</div>
+      <div class="metric-trend positive">
+        <i class="fas fa-arrow-up"></i>
+        <span>3°C desde ontem</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- GPU Information Section -->
+  @if (systemInfo && systemInfo.gpu && systemInfo.gpu.length > 0) {
+    <div class="gpu-section">
+      <h3>Informações da GPU</h3>
+      <div class="gpu-grid">
+        @for (gpu of systemInfo.gpu; track gpu.name) {
+          <div class="gpu-card">
+            <div class="gpu-header">
+              <div class="gpu-icon">
+                <i class="fas fa-microchip"></i>
+              </div>
+              <div class="gpu-info">
+                <h4>{{ gpu.name }}</h4>
+                <span class="gpu-type">{{ gpu.type }}</span>
+              </div>
+            </div>
+            <div class="gpu-metrics">
+              @if (gpu.utilization !== null && gpu.utilization !== undefined) {
+                <div class="gpu-metric">
+                  <span class="gpu-metric-label">Utilização:</span>
+                  <div class="gpu-metric-bar">
+                    <div class="gpu-metric-fill" [style.width.%]="gpu.utilization"></div>
+                  </div>
+                  <span class="gpu-metric-value">{{ gpu.utilization }}%</span>
+                </div>
+              }
+              @if (gpu.memory_total && gpu.memory_used !== null && gpu.memory_used !== undefined) {
+                <div class="gpu-metric">
+                  <span class="gpu-metric-label">Memória:</span>
+                  <div class="gpu-metric-bar">
+                    <div class="gpu-metric-fill" [style.width.%]="(gpu.memory_used / gpu.memory_total) * 100"></div>
+                  </div>
+                  <span class="gpu-metric-value">{{ gpu.memory_used }}MB / {{ gpu.memory_total }}MB</span>
+                </div>
+              }
+              @if (gpu.temperature !== null && gpu.temperature !== undefined) {
+                <div class="gpu-metric">
+                  <span class="gpu-metric-label">Temperatura:</span>
+                  <span class="gpu-metric-value temperature">{{ gpu.temperature }}°C</span>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="dashboard-grid">
+    <div class="card">
+      <div class="card-header">
+        <h3>Serviços do Sistema</h3>
+      </div>
+      <div class="card-body">
+        <div class="services-list">
+          @for (service of services; track service.name) {
+            <div class="service-item">
+              <div class="service-info">
+                <span class="service-name">{{ service.name }}</span>
+                <span class="service-description">{{ service.description }}</span>
+              </div>
+              <span class="status-badge" [ngClass]="service.status">
+                <span class="status-dot"></span>
+                {{ service.status | titlecase }}
+              </span>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Recursos do Sistema</h3>
+      </div>
+      <div class="card-body">
+        <div class="resource-chart">
+          <div class="resource-item">
+            <div class="resource-label">CPU</div>
+            <div class="resource-bar">
+              <div class="resource-fill" [style.width.%]="systemInfo?.cpu_usage || 0"></div>
+            </div>
+            <div class="resource-value">{{ systemInfo?.cpu_usage || 0 }}%</div>
+          </div>
+          <div class="resource-item">
+            <div class="resource-label">RAM</div>
+            <div class="resource-bar">
+              <div class="resource-fill" [style.width.%]="systemInfo?.memory_usage || 0"></div>
+            </div>
+            <div class="resource-value">{{ systemInfo?.memory_usage || 0 }}%</div>
+          </div>
+          <div class="resource-item">
+            <div class="resource-label">Disco</div>
+            <div class="resource-bar">
+              <div class="resource-fill" [style.width.%]="systemInfo?.disk_usage || 0"></div>
+            </div>
+            <div class="resource-value">{{ systemInfo?.disk_usage || 0 }}%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Ações Rápidas</h3>
+      </div>
+      <div class="card-body">
+        <div class="actions-grid">
+          <button class="btn btn-primary btn-sm">
+            <i class="fas fa-sync-alt"></i>
+            Reiniciar Sistema
+          </button>
+          <button class="btn btn-secondary btn-sm">
+            <i class="fas fa-download"></i>
+            Atualizar Pacotes
+          </button>
+          <button class="btn btn-warning btn-sm">
+            <i class="fas fa-shield-alt"></i>
+            Verificar Segurança
+          </button>
+          <button class="btn btn-success btn-sm">
+            <i class="fas fa-database"></i>
+            Backup
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Informações do Sistema</h3>
+      </div>
+      <div class="card-body">
+        <div class="info-list">
+          <div class="info-item">
+            <span class="info-label">Sistema Operacional:</span>
+            <span class="info-value">{{ systemInfo?.os_version || 'Ubuntu 22.04' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Uptime:</span>
+            <span class="info-value">{{ systemInfo?.uptime || '0 days' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Kernel:</span>
+            <span class="info-value">{{ systemInfo?.kernel_version || 'Linux 5.15.0' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Arquitetura:</span>
+            <span class="info-value">{{ systemInfo?.architecture || 'x86_64' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Seção de Gráficos -->
+  <app-system-charts></app-system-charts>
+</div>

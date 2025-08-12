@@ -1,0 +1,167 @@
+<div class="version-manager-overlay" *ngIf="isVisible" (click)="closeModal()">
+  <div class="version-manager-modal" (click)="$event.stopPropagation()">
+    <!-- Header -->
+    <div class="modal-header">
+      <div class="header-content">
+        <h2>
+          <span class="package-icon">{{ getVersionManagerIcon() }}</span>
+          Gerenciar Versões - {{ packageName }}
+        </h2>
+        <p class="package-info" *ngIf="versionInfo">
+          <span class="manager-badge">{{ versionInfo.versionManager.toUpperCase() }}</span>
+          <span class="default-version" *ngIf="versionInfo.defaultVersion">
+            Padrão: <strong>{{ versionInfo.defaultVersion }}</strong>
+          </span>
+        </p>
+      </div>
+      <button class="close-btn" (click)="closeModal()" aria-label="Fechar">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-section" *ngIf="loading">
+      <div class="loading-spinner"></div>
+      <p>Carregando informações de versões...</p>
+    </div>
+
+    <!-- Messages -->
+    <div class="message-section" *ngIf="errorMessage || successMessage">
+      <div class="alert alert-error" *ngIf="errorMessage">
+        <i class="fas fa-exclamation-triangle"></i>
+        {{ errorMessage }}
+        <button class="close-alert" (click)="clearMessages()">×</button>
+      </div>
+      <div class="alert alert-success" *ngIf="successMessage">
+        <i class="fas fa-check-circle"></i>
+        {{ successMessage }}
+        <button class="close-alert" (click)="clearMessages()">×</button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="modal-content" *ngIf="!loading && versionInfo">
+      <!-- Statistics -->
+      <div class="version-stats">
+        <div class="stat-item">
+          <div class="stat-number">{{ versionInfo.availableVersions.length }}</div>
+          <div class="stat-label">Disponíveis</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number">{{ versionInfo.installedVersions.length }}</div>
+          <div class="stat-label">Instaladas</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number">{{ versionInfo.defaultVersion ? '1' : '0' }}</div>
+          <div class="stat-label">Padrão Ativa</div>
+        </div>
+      </div>
+
+      <!-- Version List -->
+      <div class="versions-section">
+        <h3>Versões Disponíveis</h3>
+        <div class="versions-grid">
+          <div 
+            class="version-card" 
+            *ngFor="let version of versionInfo.availableVersions"
+            [class.installed]="isVersionInstalled(version)"
+            [class.default]="isDefaultVersion(version)"
+          >
+            <div class="version-header">
+              <div class="version-info">
+                <h4>{{ packageName }} {{ version }}</h4>
+                <div class="version-badges">
+                  <span class="badge badge-default" *ngIf="isDefaultVersion(version)">
+                    <i class="fas fa-star"></i> Padrão
+                  </span>
+                  <span class="badge badge-installed" *ngIf="isVersionInstalled(version)">
+                    <i class="fas fa-check"></i> Instalada
+                  </span>
+                  <span class="badge badge-available" *ngIf="!isVersionInstalled(version)">
+                    <i class="fas fa-download"></i> Disponível
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="version-actions">
+              <!-- Install Button -->
+              <button 
+                class="btn btn-install"
+                *ngIf="!isVersionInstalled(version)"
+                [disabled]="actionInProgress['install-' + version]"
+                (click)="installVersion(version)"
+              >
+                <i class="fas fa-download" *ngIf="!actionInProgress['install-' + version]"></i>
+                <div class="btn-spinner" *ngIf="actionInProgress['install-' + version]"></div>
+                {{ actionInProgress['install-' + version] ? 'Instalando...' : 'Instalar' }}
+              </button>
+
+              <!-- Set Default Button -->
+              <button 
+                class="btn btn-default"
+                *ngIf="isVersionInstalled(version) && !isDefaultVersion(version)"
+                [disabled]="actionInProgress['default-' + version]"
+                (click)="setDefaultVersion(version)"
+              >
+                <i class="fas fa-star" *ngIf="!actionInProgress['default-' + version]"></i>
+                <div class="btn-spinner" *ngIf="actionInProgress['default-' + version]"></div>
+                {{ actionInProgress['default-' + version] ? 'Definindo...' : 'Definir Padrão' }}
+              </button>
+
+              <!-- Uninstall Button -->
+              <button 
+                class="btn btn-uninstall"
+                *ngIf="canUninstallVersion(version)"
+                [disabled]="actionInProgress['uninstall-' + version]"
+                (click)="uninstallVersion(version)"
+              >
+                <i class="fas fa-trash" *ngIf="!actionInProgress['uninstall-' + version]"></i>
+                <div class="btn-spinner" *ngIf="actionInProgress['uninstall-' + version]"></div>
+                {{ actionInProgress['uninstall-' + version] ? 'Removendo...' : 'Remover' }}
+              </button>
+
+              <!-- Current Default Badge -->
+              <div class="current-default" *ngIf="isDefaultVersion(version)">
+                <i class="fas fa-star"></i>
+                Versão Ativa
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Instructions -->
+      <div class="instructions-section">
+        <h4>Como usar o gerenciador de versões</h4>
+        <div class="instruction-item" *ngIf="versionInfo.versionManager === 'nvm'">
+          <i class="fas fa-info-circle"></i>
+          <span>Este pacote usa <strong>NVM</strong> para gerenciar múltiplas versões do Node.js</span>
+        </div>
+        <div class="instruction-item" *ngIf="versionInfo.versionManager === 'dotnet'">
+          <i class="fas fa-info-circle"></i>
+          <span>Este pacote usa o <strong>SDK do .NET</strong> para gerenciar múltiplas versões</span>
+        </div>
+        <div class="instruction-item" *ngIf="versionInfo.versionManager === 'manual'">
+          <i class="fas fa-info-circle"></i>
+          <span>Este pacote usa <strong>update-alternatives</strong> para alternar entre versões</span>
+        </div>
+        <div class="instruction-item">
+          <i class="fas fa-lightbulb"></i>
+          <span>A versão padrão é usada quando você executa o comando sem especificar uma versão</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="closeModal()">
+        Fechar
+      </button>
+      <button class="btn btn-primary" (click)="loadVersionInfo()" [disabled]="loading">
+        <i class="fas fa-sync-alt"></i>
+        Atualizar
+      </button>
+    </div>
+  </div>
+</div>

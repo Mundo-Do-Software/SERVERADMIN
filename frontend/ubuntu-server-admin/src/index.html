@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Ubuntu Server Admin</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <script>
+    console.log('INDEX.HTML CARREGADO - Verificando se Angular vai iniciar...');
+    window.addEventListener('load', function() {
+      console.log('Window load event triggered');
+    });
+  </script>
+</head>
+<body>
+  <app-root>
+    <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+      <h2>Carregando Ubuntu Server Admin...</h2>
+      <p>Se você está vendo essa mensagem por mais de alguns segundos, pode haver um problema.</p>
+      <div style="border: 1px solid #ccc; margin: 20px auto; padding: 20px; max-width: 500px; background: #f9f9f9;">
+        <h3>Debug Info:</h3>
+        <p>Base href: <span id="base-href"></span></p>
+        <p>Current URL: <span id="current-url"></span></p>
+      </div>
+    </div>
+  </app-root>
+  <script>
+    document.getElementById('base-href').textContent = document.querySelector('base').href;
+    document.getElementById('current-url').textContent = window.location.href;
+    console.log('Base href:', document.querySelector('base').href);
+    console.log('Current URL:', window.location.href);
+  </script>
+</body>
+</html>

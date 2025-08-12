@@ -1,0 +1,18 @@
+<div class="layout-root" 
+     [class.sidebar-collapsed]="(sidebarCollapsed$ | async) && !(isMobile$ | async)"
+     [class.mobile-menu-open]="isMobileOpen$ | async">
+  
+  @if (isMobileOpen$ | async) {
+    <div class="backdrop" (click)="closeMobileMenu()"></div>
+  }
+
+  <app-sidebar></app-sidebar>
+
+  <div class="layout-body">
+    <app-header></app-header>
+    <main class="main-content">
+      <router-outlet></router-outlet>
+    </main>
+    <app-footer></app-footer>
+  </div>
+</div>

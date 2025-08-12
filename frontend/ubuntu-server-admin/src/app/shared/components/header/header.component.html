@@ -1,0 +1,95 @@
+<header class="header">
+  <div class="left-section">
+    <button class="menu-toggle" (click)="toggleSidebar()">
+      <i class="fas fa-bars"></i>
+    </button>
+    <div class="app-title">Ubuntu Server Admin</div>
+    @if (breadcrumb) {
+      <nav class="breadcrumb">
+        <div class="breadcrumb-item">
+          <i class="fas fa-home"></i>
+          <span>{{ breadcrumb }}</span>
+        </div>
+      </nav>
+    }
+  </div>
+
+  <div class="center-section">
+    <div class="search-wrapper">
+      <i class="fas fa-search"></i>
+      <input 
+        #searchInput
+        type="text" 
+        placeholder="Pesquisar..." 
+        (input)="onSearch(searchInput.value)"
+      />
+    </div>
+  </div>
+
+  @if (showSearchResults) {
+    <div class="search-results">
+      <div class="dropdown-content">
+        @for (result of searchResults; track result.id) {
+          <div class="search-result-item">
+            {{ result.title }}
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="right-section">
+    <div class="icon-wrapper" (click)="toggleNotifications()">
+      <i class="fas fa-bell"></i>
+      @if (getUnreadCount() > 0) {
+        <span class="badge">{{getUnreadCount()}}</span>
+      }
+      @if (showNotifications) {
+        <div class="dropdown notifications">
+          <div class="dropdown-header">
+            <h3>Notificações</h3>
+            <a href="#" class="mark-all">Marcar todas como lidas</a>
+          </div>
+          <div class="dropdown-content">
+            @for (notification of notifications; track notification.id) {
+              <div class="notification-item" [class.unread]="!notification.read">
+                <i class="fas fa-circle status-dot"></i>
+                <div class="notification-content">
+                  <p>{{ notification.message }}</p>
+                  <small>{{ notification.time }}</small>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Theme Toggle Button -->
+    <app-theme-toggle></app-theme-toggle>
+
+    <div class="icon-wrapper">
+      <i class="fas fa-cog"></i>
+    </div>
+
+    <div class="user-menu" (click)="toggleUserMenu()">
+      <div class="user-avatar">
+        <img src="https://ui-avatars.com/api/?name=Admin&background=2563eb&color=fff" alt="User Avatar">
+        <span class="user-name">{{ getCurrentUsername() }}</span>
+      </div>
+      @if (showUserMenu) {
+        <div class="user-dropdown">
+          <div class="user-info">
+            <p><strong>{{ getCurrentUsername() }}</strong></p>
+            <p class="user-role">{{ getUserRole() }}</p>
+          </div>
+          <hr>
+          <button class="logout-btn" (click)="logout()">
+            <i class="fas fa-sign-out-alt"></i>
+            Sair
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</header>

@@ -1,0 +1,294 @@
+<div class="network-container">
+  <div class="page-header">
+    <h1>Gerenciamento de Rede</h1>
+    <p>Configure e monitore as configurações de rede do servidor</p>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading-container">
+    <div class="loading-spinner"></div>
+    <p>Carregando informações de rede...</p>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error && !loading" class="error-container">
+    <div class="error-message">
+      <i class="fas fa-exclamation-triangle"></i>
+      <p>{{ error }}</p>
+      <button class="btn btn-primary" (click)="refreshAll()">
+        <i class="fas fa-sync-alt"></i>
+        Tentar Novamente
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div *ngIf="!loading && !error" class="network-grid">
+    <!-- Interfaces de Rede -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Interfaces de Rede</h3>
+        <button class="btn btn-secondary btn-sm" (click)="refreshInterfaces()" [disabled]="refreshing">
+          <i class="fas fa-sync-alt" [class.fa-spin]="refreshing"></i>
+          Atualizar
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="interfaces-list">
+          <div *ngFor="let interface of interfaces" class="interface-item">
+            <div class="interface-info">
+              <div class="interface-header">
+                <i [class]="getInterfaceIcon(interface.type)"></i>
+                <div class="interface-name">{{ interface.name }}</div>
+                <button 
+                  class="btn btn-sm btn-outline-primary interface-toggle"
+                  (click)="toggleInterface(interface.name)"
+                  [title]="interface.status === 'online' ? 'Desabilitar' : 'Habilitar'">
+                  <i [class]="interface.status === 'online' ? 'fas fa-power-off' : 'fas fa-play'"></i>
+                </button>
+              </div>
+              <div class="interface-details">
+                <span class="interface-ip">
+                  {{ interface.ip_address || 'N/A' }}
+                  <span *ngIf="interface.netmask">/{{ interface.netmask }}</span>
+                </span>
+                <span class="interface-type">{{ interface.type }}</span>
+                <span *ngIf="interface.speed" class="interface-speed">
+                  {{ formatSpeed(interface.speed) }}
+                </span>
+              </div>
+              <div class="interface-stats">
+                <span class="stat-item">
+                  <i class="fas fa-download"></i>
+                  {{ formatBytes(interface.rx_bytes) }}
+                </span>
+                <span class="stat-item">
+                  <i class="fas fa-upload"></i>
+                  {{ formatBytes(interface.tx_bytes) }}
+                </span>
+                <span *ngIf="interface.mac_address" class="mac-address">
+                  MAC: {{ interface.mac_address }}
+                </span>
+              </div>
+            </div>
+            <span [class]="getStatusClass(interface.status)">
+              <span class="status-dot"></span>
+              {{ interface.status === 'online' ? 'Online' : 'Offline' }}
+            </span>
+          </div>
+
+          <div *ngIf="interfaces.length === 0" class="no-data">
+            <i class="fas fa-network-wired"></i>
+            <p>Nenhuma interface de rede encontrada</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Estatísticas de Rede -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Estatísticas de Rede</h3>
+        <button class="btn btn-secondary btn-sm" (click)="refreshStats()" [disabled]="refreshing">
+          <i class="fas fa-sync-alt" [class.fa-spin]="refreshing"></i>
+          Atualizar
+        </button>
+      </div>
+      <div class="card-body">
+        <div *ngIf="stats" class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-icon">
+              <i class="fas fa-download"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ stats.download }}</div>
+              <div class="stat-label">Download Total</div>
+            </div>
+          </div>
+          
+          <div class="stat-item">
+            <div class="stat-icon">
+              <i class="fas fa-upload"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ stats.upload }}</div>
+              <div class="stat-label">Upload Total</div>
+            </div>
+          </div>
+          
+          <div class="stat-item">
+            <div class="stat-icon">
+              <i class="fas fa-exchange-alt"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ stats.packets_recv + stats.packets_sent | number }}</div>
+              <div class="stat-label">Pacotes Totais</div>
+            </div>
+          </div>
+          
+          <div class="stat-item">
+            <div class="stat-icon">
+              <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">{{ stats.errors + stats.drops }}</div>
+              <div class="stat-label">Erros/Drops</div>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="!stats" class="no-data">
+          <i class="fas fa-chart-line"></i>
+          <p>Estatísticas não disponíveis</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Configurações DNS -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Configurações DNS</h3>
+        <button class="btn btn-secondary btn-sm" (click)="loadAllData()">
+          <i class="fas fa-sync-alt"></i>
+          Atualizar
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="dns-list">
+          <div *ngFor="let dns of dnsServers" class="dns-item">
+            <div class="dns-type">{{ dns.type }}</div>
+            <div class="dns-address">{{ dns.ip }}</div>
+          </div>
+
+          <div *ngIf="dnsServers.length === 0" class="no-data">
+            <i class="fas fa-server"></i>
+            <p>Nenhum servidor DNS configurado</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teste de Conectividade -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Teste de Conectividade</h3>
+      </div>
+      <div class="card-body">
+        <div class="ping-container">
+          <div class="ping-input">
+            <input 
+              type="text" 
+              [(ngModel)]="pingHost" 
+              placeholder="Digite um host ou IP (ex: google.com, 8.8.8.8)"
+              class="form-control"
+              (keyup.enter)="executePing()"
+              [disabled]="pinging">
+            <button 
+              class="btn btn-primary" 
+              (click)="executePing()" 
+              [disabled]="pinging || !pingHost.trim()">
+              <i class="fas fa-satellite-dish" [class.fa-spin]="pinging"></i>
+              {{ pinging ? 'Testando...' : 'Ping' }}
+            </button>
+          </div>
+
+          <div *ngIf="pingResult" class="ping-result">
+            <div class="ping-header">
+              <h4>Resultado do Ping para {{ pingResult.host }}</h4>
+              <span [class]="pingResult.reachable ? 'status-badge online' : 'status-badge offline'">
+                <span class="status-dot"></span>
+                {{ pingResult.reachable ? 'Acessível' : 'Inacessível' }}
+              </span>
+            </div>
+            <div class="ping-stats">
+              <div class="ping-stat">
+                <span class="label">Perda de Pacotes:</span>
+                <span class="value">{{ pingResult.packet_loss }}</span>
+              </div>
+              <div class="ping-stat">
+                <span class="label">Tempo Médio:</span>
+                <span class="value">{{ pingResult.avg_time }}</span>
+              </div>
+            </div>
+            <div *ngIf="pingResult.error" class="ping-error">
+              <i class="fas fa-exclamation-triangle"></i>
+              {{ pingResult.error }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conexões Ativas -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Conexões Ativas</h3>
+        <button class="btn btn-secondary btn-sm" (click)="refreshConnections()" [disabled]="refreshing">
+          <i class="fas fa-sync-alt" [class.fa-spin]="refreshing"></i>
+          Atualizar
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="connections-list">
+          <div *ngFor="let connection of connections" class="connection-item">
+            <div class="connection-info">
+              <div class="connection-header">
+                <i [class]="getProcessIcon(connection.process_name)"></i>
+                <div class="connection-process">
+                  {{ connection.process_name }} 
+                  <span class="connection-pid">(PID: {{ connection.pid }})</span>
+                </div>
+              </div>
+              <div class="connection-addresses">
+                <div class="connection-local">
+                  <span class="label">Local:</span>
+                  <span class="address">{{ connection.local_address }}</span>
+                </div>
+                <div class="connection-remote">
+                  <span class="label">Remoto:</span>
+                  <span class="address">{{ connection.remote_address }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="connection-stats">
+              <span class="connection-protocol">{{ connection.protocol }}</span>
+              <span class="connection-status">{{ connection.status }}</span>
+            </div>
+          </div>
+
+          <div *ngIf="connections.length === 0" class="no-data">
+            <i class="fas fa-plug"></i>
+            <p>Nenhuma conexão ativa encontrada</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ações Rápidas -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Ações Rápidas</h3>
+      </div>
+      <div class="card-body">
+        <div class="actions-grid">
+          <button class="btn btn-warning" (click)="restartNetwork()">
+            <i class="fas fa-sync-alt"></i>
+            Reiniciar Rede
+          </button>
+          <button class="btn btn-primary" (click)="refreshAll()">
+            <i class="fas fa-download"></i>
+            Atualizar Tudo
+          </button>
+          <button class="btn btn-info" (click)="pingHost='8.8.8.8'; executePing()">
+            <i class="fas fa-satellite-dish"></i>
+            Teste DNS Google
+          </button>
+          <button class="btn btn-success" (click)="pingHost='1.1.1.1'; executePing()">
+            <i class="fas fa-cloud"></i>
+            Teste Cloudflare
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

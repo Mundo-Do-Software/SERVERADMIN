@@ -1,0 +1,144 @@
+<div class="login-wrapper">
+  <div class="login-form-area">
+    <div class="login-box">
+      <div class="login-header">
+        <div class="server-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+        </div>
+        <h1>Ubuntu Server Admin</h1>
+        <p>Autenticação sudo necessária</p>
+      </div>
+
+      @if (error) {
+        <div class="error-message">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+          <span>{{ error }}</span>
+        </div>
+      }
+
+      <form [formGroup]="form" (ngSubmit)="submit()">
+        <div class="form-group">
+          <label for="username">Usuário</label>
+          <input 
+            id="username"
+            formControlName="username" 
+            type="text" 
+            placeholder="Digite seu usuário"
+            [class.error]="getFieldError('username')"
+            autocomplete="username"
+          />
+          @if (getFieldError('username')) {
+            <div class="field-error">{{ getFieldError('username') }}</div>
+          }
+        </div>
+
+        <div class="form-group">
+          <label for="password">Senha</label>
+          <div class="password-input">
+            <input 
+              id="password"
+              formControlName="password" 
+              [type]="showPassword ? 'text' : 'password'" 
+              placeholder="Digite sua senha"
+              [class.error]="getFieldError('password')"
+              autocomplete="current-password"
+            />
+            <button 
+              type="button" 
+              class="password-toggle"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="showPassword ? 'Ocultar senha' : 'Mostrar senha'"
+            >
+              @if (showPassword) {
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                </svg>
+              } @else {
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              }
+            </button>
+          </div>
+          @if (getFieldError('password')) {
+            <div class="field-error">{{ getFieldError('password') }}</div>
+          }
+        </div>
+
+        <div class="sudo-warning">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+            <path d="M12 9v4"></path>
+            <path d="m12 17 .01 0"></path>
+          </svg>
+          <span>Este usuário deve ter privilégios sudo para acessar o painel</span>
+        </div>
+
+        <button 
+          type="submit" 
+          class="login-button"
+          [disabled]="form.invalid || loading"
+          [class.loading]="loading"
+        >
+          @if (loading) {
+            <div class="spinner"></div>
+            <span>Autenticando...</span>
+          } @else {
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+              <polyline points="10,17 15,12 10,7"></polyline>
+              <line x1="15" y1="12" x2="3" y2="12"></line>
+            </svg>
+            <span>Entrar</span>
+          }
+        </button>
+      </form>
+
+      <div class="login-footer">
+        <small>Acesso restrito a administradores do sistema</small>
+      </div>
+    </div>
+  </div>
+  
+  <div class="login-illustration">
+    <div class="terminal-mockup">
+      <div class="terminal-header">
+        <div class="terminal-buttons">
+          <span class="btn close"></span>
+          <span class="btn minimize"></span>
+          <span class="btn maximize"></span>
+        </div>
+        <div class="terminal-title">ubuntu&#64;server:~$</div>
+      </div>
+      <div class="terminal-body">
+        <div class="terminal-line">
+          <span class="prompt">ubuntu&#64;server:~$</span>
+          <span class="command">sudo systemctl status nginx</span>
+        </div>
+        <div class="terminal-line output">
+          <span class="status-active">● nginx.service - A high performance web server</span>
+        </div>
+        <div class="terminal-line output">
+          <span class="status-loaded">Loaded: loaded (/lib/systemd/system/nginx.service)</span>
+        </div>
+        <div class="terminal-line output">
+          <span class="status-active">Active: active (running) since Mon 2025-08-11 14:39:02 UTC</span>
+        </div>
+        <div class="terminal-line">
+          <span class="prompt">ubuntu&#64;server:~$</span>
+          <span class="cursor">_</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,70 @@
+<aside class="sidebar" [class.collapsed]="isCollapsed | async">
+  <div class="user-info">
+    <div class="avatar-wrapper">
+      <img
+        src="https://ui-avatars.com/api/?name=Admin+User&background=2563eb&color=fff"
+        alt="User Avatar"
+        class="avatar"
+      />
+      <span class="status-badge online"></span>
+    </div>
+    <div class="user-details" *ngIf="!(isCollapsed | async)">
+      <strong class="name">Admin User</strong>
+      <span class="role">Administrador</span>
+    </div>
+  </div>
+
+  <nav class="menu">
+    <!-- Menu principal -->
+    <ul class="menu-main">
+      @for (item of menuItems; track item.label) {
+        <li class="menu-item">
+          @if (item.children) {
+            <button 
+              class="menu-link"
+              (click)="toggleSubmenu(item.label)"
+              [class.active]="isSubmenuOpen(item.label)">
+              <i [class]="item.icon"></i>
+              <span class="menu-text">{{ item.label }}</span>
+              <i class="fas fa-chevron-down submenu-arrow" 
+                 [class.rotated]="isSubmenuOpen(item.label)"></i>
+            </button>
+            <ul class="submenu" [class.open]="isSubmenuOpen(item.label)">
+              @for (child of item.children; track child.label) {
+                <li>
+                  @if (child.label.startsWith('─')) {
+                    <div class="submenu-separator">
+                      <span>Painéis de Admin</span>
+                    </div>
+                  } @else if (child.route) {
+                    <a [routerLink]="child.route" routerLinkActive="active" class="submenu-link">
+                      <i [class]="child.icon"></i>
+                      <span>{{ child.label }}</span>
+                    </a>
+                  }
+                </li>
+              }
+            </ul>
+          } @else {
+            <a [routerLink]="item.route" routerLinkActive="active" class="menu-link">
+              <i [class]="item.icon"></i>
+              <span class="menu-text">{{ item.label }}</span>
+            </a>
+          }
+        </li>
+      }
+    </ul>
+
+    <!-- Menu inferior -->
+    <ul class="menu-bottom">
+      @for (item of bottomMenuItems; track item.label) {
+        <li class="menu-item">
+          <a [routerLink]="item.route" routerLinkActive="active" class="menu-link">
+            <i [class]="item.icon"></i>
+            <span class="menu-text">{{ item.label }}</span>
+          </a>
+        </li>
+      }
+    </ul>
+  </nav>
+</aside>

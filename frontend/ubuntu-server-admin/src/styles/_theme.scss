@@ -1,0 +1,206 @@
+/* Theme Configuration */
+:root {
+  /* Colors */
+  --primary-color: #2563eb;
+  --primary-light: #3b82f6;
+  --primary-dark: #1d4ed8;
+  --secondary-color: #64748b;
+  --accent-color: #f59e0b;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+  --info-color: #06b6d4;
+
+  /* Background Colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --bg-header: #ffffff;
+  --bg-sidebar: #1e293b;
+  --bg-card: #ffffff;
+  --bg-modal: #ffffff;
+  --bg-input: #ffffff;
+
+  /* Text Colors */
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --text-light: #cbd5e1;
+  --text-inverse: #ffffff;
+
+  /* Border Colors */
+  --border-color: #e2e8f0;
+  --border-light: #f1f5f9;
+  --border-dark: #cbd5e1;
+
+  /* Shadow Colors */
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --shadow-light: rgba(0, 0, 0, 0.05);
+  --shadow-dark: rgba(0, 0, 0, 0.15);
+
+  /* Sidebar Colors */
+  --sidebar-bg: #1e293b;
+  --sidebar-text: #cbd5e1;
+  --sidebar-text-active: #ffffff;
+  --sidebar-icon: #94a3b8;
+  --sidebar-icon-active: #3b82f6;
+  --sidebar-hover: rgba(59, 130, 246, 0.1);
+  --sidebar-active: rgba(59, 130, 246, 0.2);
+  --sidebar-border: #334155;
+
+  /* Header Colors */
+  --header-bg: #ffffff;
+  --header-text: #1e293b;
+  --header-icon-color: #64748b;
+  --header-icon-hover-bg: #f1f5f9;
+  --header-icon-hover-color: #1e293b;
+  --app-title-color: #1e293b;
+  --breadcrumb-separator: #94a3b8;
+
+  /* Button Colors */
+  --btn-primary: #2563eb;
+  --btn-primary-hover: #1d4ed8;
+  --btn-secondary: #64748b;
+  --btn-secondary-hover: #475569;
+  --btn-success: #10b981;
+  --btn-success-hover: #059669;
+  --btn-warning: #f59e0b;
+  --btn-warning-hover: #d97706;
+  --btn-danger: #ef4444;
+  --btn-danger-hover: #dc2626;
+
+  /* Card Colors */
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+
+  /* Form Colors */
+  --input-bg: #ffffff;
+  --input-border: #e2e8f0;
+  --input-border-focus: #3b82f6;
+  --input-text: #1e293b;
+  --input-placeholder: #94a3b8;
+
+  /* Status Colors */
+  --status-online: #10b981;
+  --status-offline: #ef4444;
+  --status-warning: #f59e0b;
+  --status-idle: #64748b;
+
+  /* Dashboard Specific */
+  --dashboard-bg: #f8fafc;
+  --metric-card-bg: #ffffff;
+  --metric-card-border: #e2e8f0;
+  --metric-value-color: #1e293b;
+  --metric-label-color: #64748b;
+  --metric-trend-positive: #10b981;
+  --metric-trend-negative: #ef4444;
+
+  /* Animation */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.5s ease;
+
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Font Sizes */
+  --font-xs: 0.75rem;
+  --font-sm: 0.875rem;
+  --font-base: 1rem;
+  --font-lg: 1.125rem;
+  --font-xl: 1.25rem;
+  --font-2xl: 1.5rem;
+  --font-3xl: 1.875rem;
+  --font-4xl: 2.25rem;
+
+  /* Z-Index */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+  /* Background Colors */
+  --bg-primary: #0f172a;
+  --bg-secondary: #334155;
+  --bg-tertiary: #475569;
+  --bg-header: #1e293b;
+  --bg-sidebar: #0f172a;
+  --bg-card: #334155;
+  --bg-modal: #1e293b;
+  --bg-input: #475569;
+
+  /* Text Colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-light: #64748b;
+
+  /* Border Colors */
+  --border-color: #475569;
+  --border-light: #64748b;
+  --border-dark: #334155;
+
+  /* Shadow Colors */
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --shadow-light: rgba(0, 0, 0, 0.2);
+  --shadow-dark: rgba(0, 0, 0, 0.4);
+
+  /* Header Colors */
+  --header-bg: #1e293b;
+  --header-text: #f8fafc;
+  --header-icon-color: #cbd5e1;
+  --header-icon-hover-bg: #334155;
+  --header-icon-hover-color: #f8fafc;
+  --app-title-color: #f8fafc;
+
+  /* Card Colors */
+  --card-bg: #334155;
+  --card-border: #475569;
+  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+
+  /* Form Colors */
+  --input-bg: #475569;
+  --input-border: #64748b;
+  --input-text: #f8fafc;
+  --input-placeholder: #94a3b8;
+
+  /* Dashboard Specific */
+  --dashboard-bg: #0f172a;
+  --metric-card-bg: #334155;
+  --metric-card-border: #475569;
+  --metric-value-color: #f8fafc;
+  --metric-label-color: #cbd5e1;
+}
+
+/* Component-specific theme variables */
+:root {
+  /* Sidebar measurements */
+  --sidebar-width: 250px;
+  --sidebar-collapsed-width: 60px;
+  --header-height: 60px;
+  --footer-height: 40px;
+
+  /* Layout breakpoints */
+  --mobile-breakpoint: 768px;
+  --tablet-breakpoint: 1024px;
+  --desktop-breakpoint: 1280px;
+}

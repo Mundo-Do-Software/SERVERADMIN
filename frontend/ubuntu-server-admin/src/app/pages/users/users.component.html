@@ -1,0 +1,314 @@
+<div class="users-page">
+  <div class="page-header">
+    <h2>Gerenciamento de Usuários</h2>
+    <button class="btn btn-primary" (click)="openCreateModal()">
+      <i class="fas fa-plus"></i> Novo Usuário
+    </button>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="isLoading" class="loading-container">
+    <div class="spinner"></div>
+    <p>Carregando usuários...</p>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="error" class="error-container">
+    <div class="alert alert-danger">
+      <i class="fas fa-exclamation-triangle"></i>
+      {{ error }}
+      <button class="btn btn-sm btn-outline-danger" (click)="loadUsers()">
+        Tentar Novamente
+      </button>
+    </div>
+  </div>
+
+  <!-- Users Table -->
+  <div *ngIf="!isLoading && !error" class="users-table-container">
+    <div class="table-responsive">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Usuário</th>
+            <th>UID</th>
+            <th>Grupos</th>
+            <th>Home Directory</th>
+            <th>Shell</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let user of users">
+            <td>
+              <div class="user-info">
+                <i class="fas fa-user"></i>
+                <span class="username">{{ user.username }}</span>
+              </div>
+            </td>
+            <td>{{ user.uid }}</td>
+            <td>
+              <div class="groups-container">
+                <span *ngFor="let group of user.groups" class="badge badge-secondary">
+                  {{ group }}
+                </span>
+              </div>
+            </td>
+            <td>{{ user.home }}</td>
+            <td>{{ user.shell }}</td>
+            <td>
+              <span [class]="getStatusClass(user)">
+                {{ getStatusText(user) }}
+              </span>
+            </td>
+            <td>
+              <div class="action-buttons">
+                <button class="btn btn-sm btn-outline-primary" 
+                        (click)="openEditModal(user)" 
+                        title="Editar">
+                  <i class="fas fa-edit"></i>
+                </button>
+                <button *ngIf="user.is_active" 
+                        class="btn btn-sm btn-outline-warning" 
+                        (click)="lockUser(user.username)" 
+                        title="Bloquear">
+                  <i class="fas fa-lock"></i>
+                </button>
+                <button *ngIf="!user.is_active" 
+                        class="btn btn-sm btn-outline-success" 
+                        (click)="unlockUser(user.username)" 
+                        title="Desbloquear">
+                  <i class="fas fa-unlock"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" 
+                        (click)="openDeleteModal(user)" 
+                        title="Excluir">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div *ngIf="users.length === 0" class="empty-state">
+      <i class="fas fa-users"></i>
+      <h3>Nenhum usuário encontrado</h3>
+      <p>Clique em "Novo Usuário" para adicionar o primeiro usuário.</p>
+    </div>
+  </div>
+
+  <!-- Create User Modal -->
+  <div *ngIf="showCreateModal" class="modal-overlay" (click)="closeModals()">
+    <div class="modal-content create-user-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i class="fas fa-user-plus"></i> Criar Novo Usuário</h3>
+        <button class="btn-close" (click)="closeModals()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form (ngSubmit)="createUser()" #createUserForm="ngForm">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="username"><i class="fas fa-user"></i> Nome de Usuário</label>
+              <input type="text" 
+                     id="username" 
+                     class="form-control" 
+                     [(ngModel)]="createForm.username" 
+                     name="username"
+                     placeholder="Digite o nome do usuário"
+                     required>
+            </div>
+            
+            <div class="form-group">
+              <label for="shell"><i class="fas fa-terminal"></i> Shell</label>
+              <select id="shell" 
+                      class="form-control" 
+                      [(ngModel)]="createForm.shell" 
+                      name="shell">
+                <option value="/bin/bash">/bin/bash</option>
+                <option value="/bin/sh">/bin/sh</option>
+                <option value="/bin/zsh">/bin/zsh</option>
+                <option value="/usr/bin/fish">/usr/bin/fish</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="password"><i class="fas fa-lock"></i> Senha</label>
+              <input type="password" 
+                     id="password" 
+                     class="form-control" 
+                     [(ngModel)]="createForm.password" 
+                     name="password"
+                     placeholder="Digite a senha"
+                     required>
+            </div>
+            
+            <div class="form-group">
+              <label for="confirmPassword"><i class="fas fa-lock"></i> Confirmar Senha</label>
+              <input type="password" 
+                     id="confirmPassword" 
+                     class="form-control" 
+                     [(ngModel)]="confirmPassword" 
+                     name="confirmPassword"
+                     placeholder="Confirme a senha"
+                     required>
+            </div>
+          </div>
+
+          <div class="form-options">
+            <div class="form-check">
+              <input type="checkbox" 
+                     id="create_home"
+                     class="form-check-input" 
+                     [(ngModel)]="createForm.create_home" 
+                     name="create_home">
+              <label for="create_home" class="form-check-label">
+                <i class="fas fa-home"></i> Criar diretório home
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label><i class="fas fa-users"></i> Grupos</label>
+            <div class="groups-grid">
+              <div *ngFor="let group of groups" class="form-check">
+                <input type="checkbox" 
+                       class="form-check-input" 
+                       [id]="'create-group-' + group.name"
+                       (change)="onGroupChange($event, group.name, true)">
+                <label [for]="'create-group-' + group.name" class="form-check-label">
+                  {{ group.name }} <span class="gid">(GID: {{ group.gid }})</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="closeModals()">
+              <i class="fas fa-times"></i> Cancelar
+            </button>
+            <button type="submit" 
+                    class="btn btn-primary" 
+                    [disabled]="!createUserForm.valid || createForm.password !== confirmPassword">
+              <i class="fas fa-user-plus"></i> Criar Usuário
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit User Modal -->
+  <div *ngIf="showEditModal" class="modal-overlay" (click)="closeModals()">
+    <div class="modal-content edit-user-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i class="fas fa-user-edit"></i> Editar Usuário: {{ selectedUser?.username }}</h3>
+        <button class="btn-close" (click)="closeModals()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form (ngSubmit)="updateUser()" #editUserForm="ngForm">
+          
+          <div class="form-section">
+            <h4><i class="fas fa-key"></i> Alterar Senha</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="newPassword"><i class="fas fa-lock"></i> Nova Senha</label>
+                <input type="password" 
+                       id="newPassword" 
+                       class="form-control" 
+                       [(ngModel)]="editForm.password" 
+                       name="newPassword"
+                       placeholder="Digite a nova senha (deixe vazio para não alterar)">
+              </div>
+              
+              <div class="form-group">
+                <label for="confirmNewPassword"><i class="fas fa-lock"></i> Confirmar Nova Senha</label>
+                <input type="password" 
+                       id="confirmNewPassword" 
+                       class="form-control" 
+                       [(ngModel)]="confirmEditPassword" 
+                       name="confirmNewPassword"
+                       placeholder="Confirme a nova senha">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4><i class="fas fa-terminal"></i> Shell</h4>
+            <div class="form-group">
+              <select class="form-control" 
+                      [(ngModel)]="editForm.shell" 
+                      name="shell">
+                <option value="/bin/bash">/bin/bash</option>
+                <option value="/bin/sh">/bin/sh</option>
+                <option value="/bin/zsh">/bin/zsh</option>
+                <option value="/usr/bin/fish">/usr/bin/fish</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4><i class="fas fa-users"></i> Grupos</h4>
+            <div class="groups-grid">
+              <div *ngFor="let group of groups" class="form-check">
+                <input type="checkbox" 
+                       class="form-check-input" 
+                       [id]="'edit-group-' + group.name"
+                       [checked]="isGroupSelected(group.name)"
+                       (change)="onGroupChange($event, group.name)">
+                <label [for]="'edit-group-' + group.name" class="form-check-label">
+                  {{ group.name }} <span class="gid">(GID: {{ group.gid }})</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="closeModals()">
+              <i class="fas fa-times"></i> Cancelar
+            </button>
+            <button type="submit" 
+                    class="btn btn-primary"
+                    [disabled]="editForm.password && editForm.password !== confirmEditPassword">
+              <i class="fas fa-save"></i> Salvar Alterações
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete User Modal -->
+  <div *ngIf="showDeleteModal" class="modal-overlay" (click)="closeModals()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Confirmar Exclusão</h3>
+        <button class="btn-close" (click)="closeModals()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="confirmation-content">
+          <i class="fas fa-exclamation-triangle text-warning"></i>
+          <p>Tem certeza que deseja excluir o usuário <strong>{{ selectedUser?.username }}</strong>?</p>
+          <p class="text-muted">Esta ação não pode ser desfeita.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="closeModals()">
+            Cancelar
+          </button>
+          <button type="button" class="btn btn-danger" (click)="deleteUser()">
+            Excluir Usuário
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

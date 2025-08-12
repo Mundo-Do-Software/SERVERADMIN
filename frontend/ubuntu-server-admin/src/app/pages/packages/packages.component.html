@@ -1,0 +1,185 @@
+<div class="packages-container">
+  <!-- Cabeçalho -->
+  <div class="header">
+    <div class="title-section">
+      <h1>📦 Gerenciamento de Pacotes</h1>
+      <p>Instale e gerencie pacotes essenciais para seu servidor</p>
+    </div>
+    <button class="refresh-btn" (click)="refreshPackages()" [disabled]="loading">
+      <span class="icon">🔄</span>
+      Atualizar
+    </button>
+  </div>
+
+  <!-- Filtros e Busca -->
+  <div class="filters-section">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input 
+        type="text" 
+        placeholder="Buscar pacotes..." 
+        [(ngModel)]="searchTerm"
+        (input)="onSearchChange()"
+        class="search-input">
+    </div>
+
+    <div class="filters">
+      <select [(ngModel)]="selectedCategory" (change)="onCategoryChange()" class="category-select">
+        <option value="">Todas as categorias</option>
+        <option *ngFor="let category of categories" [value]="category.id">
+          {{category.name}} ({{category.count}})
+        </option>
+      </select>
+
+      <label class="checkbox-container">
+        <input 
+          type="checkbox" 
+          [(ngModel)]="showOnlyInstalled"
+          (change)="onShowInstalledChange()">
+        <span class="checkmark"></span>
+        Apenas instalados
+      </label>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="loading-container">
+    <div class="loading-spinner"></div>
+    <p>Carregando pacotes...</p>
+  </div>
+
+  <!-- Grid de Pacotes -->
+  <div *ngIf="!loading" class="packages-grid">
+    <div *ngFor="let package of filteredPackages" class="package-card" [class.installed]="package.installed">
+      <!-- Status Badge -->
+      <div class="status-badge" [class]="package.status">
+        <span *ngIf="package.installed">✅ Instalado</span>
+        <span *ngIf="!package.installed">📦 Disponível</span>
+      </div>
+
+      <!-- Ícone e Info -->
+      <div class="package-header">
+        <div class="package-icon">
+          {{getCategoryIcon(package.category)}}
+        </div>
+        <div class="package-info">
+          <h3>{{package.name}}</h3>
+          <p class="description">{{package.description}}</p>
+          <div class="meta-info">
+            <span class="version" *ngIf="package.version">v{{package.version}}</span>
+            <span class="category">{{getCategoryName(package.category)}}</span>
+            <span class="size" *ngIf="package.size">{{package.size}}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Atualização Disponível -->
+      <div *ngIf="package.installed && package.hasUpdates" 
+           class="update-notice">
+        <span class="update-icon">⬆️</span>
+        Atualização disponível: v{{package.availableVersion}}
+      </div>
+
+      <!-- Ações -->
+      <div class="package-actions">
+        <!-- Instalar -->
+        <button 
+          *ngIf="!package.installed" 
+          class="action-btn install-btn"
+          (click)="installPackage(package)"
+          [disabled]="actionInProgress[package.id]">
+          <span *ngIf="!actionInProgress[package.id]">⬇️ Instalar</span>
+          <span *ngIf="actionInProgress[package.id]">⏳ Instalando...</span>
+        </button>
+
+        <!-- Atualizar -->
+        <button 
+          *ngIf="package.installed && package.hasUpdates" 
+          class="action-btn update-btn"
+          (click)="updatePackage(package)"
+          [disabled]="actionInProgress[package.id]">
+          <span *ngIf="!actionInProgress[package.id]">⬆️ Atualizar</span>
+          <span *ngIf="actionInProgress[package.id]">⏳ Atualizando...</span>
+        </button>
+
+        <!-- Administrar -->
+        <button 
+          *ngIf="package.installed && package.hasAdminPanel" 
+          class="action-btn admin-btn"
+          (click)="openAdminPanel(package)">
+          ⚙️ Administrar
+        </button>
+
+        <!-- Gerenciar Versões -->
+        <button 
+          *ngIf="package.installed && supportsVersionManagement(package)" 
+          class="action-btn versions-btn"
+          (click)="openVersionManager(package)">
+          🔧 Versões
+        </button>
+
+        <!-- Remover -->
+        <button 
+          *ngIf="package.installed" 
+          class="action-btn remove-btn"
+          (click)="uninstallPackage(package)"
+          [disabled]="actionInProgress[package.id]">
+          <span *ngIf="!actionInProgress[package.id]">🗑️ Remover</span>
+          <span *ngIf="actionInProgress[package.id]">⏳ Removendo...</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Paginação -->
+  <div *ngIf="!loading && totalPages > 1" class="pagination">
+    <button 
+      class="pagination-btn" 
+      (click)="previousPage()" 
+      [disabled]="currentPage === 1">
+      ⬅️ Anterior
+    </button>
+
+    <div class="page-numbers">
+      <button 
+        *ngFor="let page of getPageNumbers()" 
+        class="page-btn"
+        [class.active]="page === currentPage"
+        (click)="goToPage(page)">
+        {{page}}
+      </button>
+    </div>
+
+    <button 
+      class="pagination-btn" 
+      (click)="nextPage()" 
+      [disabled]="currentPage === totalPages">
+      Próximo ➡️
+    </button>
+  </div>
+
+  <!-- Estatísticas -->
+  <div class="stats-section">
+    <div class="stat-item">
+      <span class="stat-number">{{totalPackages}}</span>
+      <span class="stat-label">Total de Pacotes</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{getInstalledCount()}}</span>
+      <span class="stat-label">Instalados</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{getUpdatesAvailableCount()}}</span>
+      <span class="stat-label">Atualizações Disponíveis</span>
+    </div>
+  </div>
+</div>
+
+<!-- Gerenciador de Versões Modal -->
+<app-package-version-manager
+  [packageId]="selectedPackageId"
+  [packageName]="selectedPackageName"
+  [isVisible]="showVersionManager"
+  (visibilityChange)="onVersionManagerVisibilityChange($event)"
+  (versionChanged)="onVersionChanged()">
+</app-package-version-manager>

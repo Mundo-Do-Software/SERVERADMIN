@@ -1,0 +1,238 @@
+<div class="services-page">
+  <div class="page-header">
+    <h2><i class="fas fa-cogs"></i> Gerenciamento de Serviços</h2>
+    <button class="btn btn-primary" (click)="refreshServices()" [disabled]="isLoading">
+      <i class="fas fa-sync-alt" [class.fa-spin]="isLoading"></i>
+      Atualizar
+    </button>
+  </div>
+
+  <!-- Error Alert -->
+  <div *ngIf="error" class="alert alert-danger">
+    <i class="fas fa-exclamation-triangle"></i>
+    {{ error }}
+  </div>
+
+  <!-- Filters and Search -->
+  <div class="services-controls">
+    <div class="search-container">
+      <i class="fas fa-search"></i>
+      <input 
+        type="text" 
+        class="form-control search-input" 
+        placeholder="Buscar serviços..." 
+        [(ngModel)]="searchTerm"
+        (input)="onSearchChange()">
+    </div>
+    
+    <div class="filter-container">
+      <select class="form-control" [(ngModel)]="selectedFilter" (change)="onFilterChange()">
+        <option value="all">Todos os serviços</option>
+        <option value="running">Executando</option>
+        <option value="stopped">Parados</option>
+        <option value="failed">Com falha</option>
+        <option value="enabled">Habilitados</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="isLoading" class="loading-container">
+    <div class="spinner"></div>
+    <p>Carregando serviços...</p>
+  </div>
+
+  <!-- Services Table -->
+  <div *ngIf="!isLoading" class="services-table-container">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Nome do Serviço</th>
+          <th>Estado</th>
+          <th>Descrição</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let service of filteredServices; trackBy: trackByServiceName">
+          <td>
+            <div class="status-indicator">
+              <i [class]="getStatusIcon(service.status)" [ngClass]="getStatusClass(service.status)"></i>
+            </div>
+          </td>
+          <td>
+            <div class="service-info">
+              <strong>{{ service.name }}</strong>
+              <span *ngIf="service.enabled" class="badge badge-enabled">Habilitado</span>
+            </div>
+          </td>
+          <td>
+            <span class="state-badge" [ngClass]="'state-' + service.active_state">
+              {{ service.active_state }}
+            </span>
+            <small class="sub-state">{{ service.sub_state }}</small>
+          </td>
+          <td>
+            <span class="description" [title]="service.description">
+              {{ service.description | slice:0:80 }}{{ service.description.length > 80 ? '...' : '' }}
+            </span>
+          </td>
+          <td>
+            <div class="action-buttons">
+              <button 
+                class="btn btn-sm btn-outline-info" 
+                (click)="openDetailsModal(service)"
+                title="Detalhes">
+                <i class="fas fa-info-circle"></i>
+              </button>
+              
+              <button 
+                *ngIf="service.active_state !== 'active'"
+                class="btn btn-sm btn-outline-success" 
+                (click)="openConfirmModal(service, 'start')"
+                title="Iniciar">
+                <i class="fas fa-play"></i>
+              </button>
+              
+              <button 
+                *ngIf="service.active_state === 'active'"
+                class="btn btn-sm btn-outline-danger" 
+                (click)="openConfirmModal(service, 'stop')"
+                title="Parar">
+                <i class="fas fa-stop"></i>
+              </button>
+              
+              <button 
+                class="btn btn-sm btn-outline-warning" 
+                (click)="openConfirmModal(service, 'restart')"
+                title="Reiniciar">
+                <i class="fas fa-redo"></i>
+              </button>
+              
+              <button 
+                *ngIf="!service.enabled"
+                class="btn btn-sm btn-outline-primary" 
+                (click)="openConfirmModal(service, 'enable')"
+                title="Habilitar">
+                <i class="fas fa-check"></i>
+              </button>
+              
+              <button 
+                *ngIf="service.enabled"
+                class="btn btn-sm btn-outline-secondary" 
+                (click)="openConfirmModal(service, 'disable')"
+                title="Desabilitar">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    
+    <!-- Empty State -->
+    <div *ngIf="filteredServices.length === 0" class="empty-state">
+      <i class="fas fa-search"></i>
+      <h3>Nenhum serviço encontrado</h3>
+      <p>Tente ajustar os filtros ou o termo de busca.</p>
+    </div>
+  </div>
+
+  <!-- Service Details Modal -->
+  <div *ngIf="showDetailsModal" class="modal-overlay" (click)="closeModals()">
+    <div class="modal-content service-details-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i class="fas fa-info-circle"></i> Detalhes do Serviço</h3>
+        <button class="btn-close" (click)="closeModals()">&times;</button>
+      </div>
+      
+      <div class="modal-body" *ngIf="selectedService">
+        <div class="service-overview">
+          <div class="service-title">
+            <h4>{{ selectedService.name }}</h4>
+            <div class="status-badge" [ngClass]="getStatusClass(selectedService.status)">
+              <i [class]="getStatusIcon(selectedService.status)"></i>
+              {{ selectedService.status === 'online' ? 'Executando' : 
+                 selectedService.status === 'offline' ? 'Parado' : 'Com falha' }}
+            </div>
+          </div>
+          <p class="service-description">{{ selectedService.description }}</p>
+        </div>
+
+        <div class="service-properties">
+          <div class="property-grid">
+            <div class="property-item">
+              <span class="property-label">Estado Ativo:</span>
+              <span class="property-value">{{ selectedService.active_state }}</span>
+            </div>
+            <div class="property-item">
+              <span class="property-label">Sub Estado:</span>
+              <span class="property-value">{{ selectedService.sub_state }}</span>
+            </div>
+            <div class="property-item">
+              <span class="property-label">Estado de Carregamento:</span>
+              <span class="property-value">{{ selectedService.load_state }}</span>
+            </div>
+            <div class="property-item" *ngIf="selectedService.unit_file_state">
+              <span class="property-label">Estado do Unit File:</span>
+              <span class="property-value">{{ selectedService.unit_file_state }}</span>
+            </div>
+            <div class="property-item" *ngIf="selectedService.pid">
+              <span class="property-label">PID:</span>
+              <span class="property-value">{{ selectedService.pid }}</span>
+            </div>
+            <div class="property-item" *ngIf="selectedService.memory_usage">
+              <span class="property-label">Uso de Memória:</span>
+              <span class="property-value">{{ selectedService.memory_usage }}</span>
+            </div>
+            <div class="property-item" *ngIf="selectedService.uptime">
+              <span class="property-label">Tempo de Atividade:</span>
+              <span class="property-value">{{ selectedService.uptime }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeModals()">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div *ngIf="showConfirmModal" class="modal-overlay" (click)="closeModals()">
+    <div class="modal-content confirmation-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i class="fas fa-exclamation-triangle"></i> Confirmar Ação</h3>
+        <button class="btn-close" (click)="closeModals()">&times;</button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="confirmation-content">
+          <p>Você tem certeza que deseja <strong>{{ pendingAction }}</strong> o serviço:</p>
+          <p class="service-name">{{ selectedService?.name }}</p>
+          <p class="text-muted">Esta ação pode afetar o funcionamento do sistema.</p>
+        </div>
+      </div>
+      
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="closeModals()" [disabled]="actionInProgress">Cancelar</button>
+        <button 
+          class="btn" 
+          [ngClass]="getActionButtonClass(pendingAction)"
+          (click)="confirmAction()"
+          [disabled]="actionInProgress">
+          <i *ngIf="!actionInProgress" [class]="getActionIcon(pendingAction)"></i>
+          <i *ngIf="actionInProgress" class="fas fa-spinner fa-spin"></i>
+          {{ actionInProgress ? 'Processando...' :
+             pendingAction === 'start' ? 'Iniciar' :
+             pendingAction === 'stop' ? 'Parar' :
+             pendingAction === 'restart' ? 'Reiniciar' :
+             pendingAction === 'enable' ? 'Habilitar' :
+             pendingAction === 'disable' ? 'Desabilitar' : 'Confirmar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

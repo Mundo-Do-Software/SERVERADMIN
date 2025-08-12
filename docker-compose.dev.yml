@@ -1,0 +1,108 @@
+version: '3.8'
+
+# Configuração para desenvolvimento
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./server_admin.db
+      - SECRET_KEY=dev-secret-key
+      - BACKEND_CORS_ORIGINS=http://localhost:4200,http://127.0.0.1:4200
+      - DEBUG=true
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    volumes:
+      - ./backend:/app
+      - backend_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    networks:
+      - server-admin-network
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  frontend:
+    build: 
+      context: ./frontend/ubuntu-server-admin
+      dockerfile: Dockerfile.dev
+    ports:
+      - "4200:4200"
+    environment:
+      - NODE_ENV=development
+      - API_URL=http://localhost:8000
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ./frontend/ubuntu-server-admin:/app
+      - /app/node_modules
+    networks:
+      - server-admin-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # PostgreSQL Database - Serviço para teste de gestão
+  postgres:
+    image: postgres:15-alpine
+    container_name: serveradmin-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=serveradmin
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - server-admin-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d serveradmin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache - Outro serviço para teste de gestão
+  redis:
+    image: redis:7-alpine
+    container_name: serveradmin-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis123
+    volumes:
+      - redis_data:/data
+    networks:
+      - server-admin-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  backend_data:
+  postgres_data:
+  redis_data:
+
+networks:
+  server-admin-network:
+    driver: bridge

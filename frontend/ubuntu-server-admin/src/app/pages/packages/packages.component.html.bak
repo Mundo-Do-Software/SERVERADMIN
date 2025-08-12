@@ -1,0 +1,630 @@
+<div class="packages-container">
+  <div class="page-header">
+    <h1>Gerenciamento de Pacotes</h1>
+    <div class="packages-container">
+  <!-- Cabeçalho -->
+  <div class="header">
+    <div class="title-section">
+      <h1>📦 Gerenciamento de Pacotes</h1>
+      <p>Instale e gerencie pacotes essenciais para seu servidor</p>
+    </div>
+    <button class="refresh-btn" (click)="refreshPackages()" [disabled]="loading">
+      <span class="icon">🔄</span>
+      Atualizar
+    </button>
+  </div>
+
+  <!-- Filtros e Busca -->
+  <div class="filters-section">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input 
+        type="text" 
+        placeholder="Buscar pacotes..." 
+        [(ngModel)]="searchTerm"
+        (input)="onSearchChange()"
+        class="search-input">
+    </div>
+
+    <div class="filters">
+      <select [(ngModel)]="selectedCategory" (change)="onCategoryChange()" class="category-select">
+        <option value="">Todas as categorias</option>
+        <option *ngFor="let category of categories" [value]="category.id">
+          {{category.name}} ({{category.count}})
+        </option>
+      </select>
+
+      <label class="checkbox-container">
+        <input 
+          type="checkbox" 
+          [(ngModel)]="showOnlyInstalled"
+          (change)="onShowInstalledChange()">
+        <span class="checkmark"></span>
+        Apenas instalados
+      </label>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="loading-container">
+    <div class="loading-spinner"></div>
+    <p>Carregando pacotes...</p>
+  </div>
+
+  <!-- Grid de Pacotes -->
+  <div *ngIf="!loading" class="packages-grid">
+    <div *ngFor="let package of filteredPackages" class="package-card" [class.installed]="package.installed">
+      <!-- Status Badge -->
+      <div class="status-badge" [class]="package.status">
+        <span *ngIf="package.installed">✅ Instalado</span>
+        <span *ngIf="!package.installed">📦 Disponível</span>
+      </div>
+
+      <!-- Ícone e Info -->
+      <div class="package-header">
+        <div class="package-icon">
+          {{getCategoryIcon(package.category)}}
+        </div>
+        <div class="package-info">
+          <h3>{{package.name}}</h3>
+          <p class="description">{{package.description}}</p>
+          <div class="meta-info">
+            <span class="version" *ngIf="package.version">v{{package.version}}</span>
+            <span class="category">{{package.category}}</span>
+            <span class="size" *ngIf="package.size">{{package.size}}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Atualização Disponível -->
+      <div *ngIf="package.installed && package.availableVersion && package.version !== package.availableVersion" 
+           class="update-notice">
+        <span class="update-icon">⬆️</span>
+        Atualização disponível: v{{package.availableVersion}}
+      </div>
+
+      <!-- Ações -->
+      <div class="package-actions">
+        <!-- Instalar -->
+        <button 
+          *ngIf="!package.installed" 
+          class="action-btn install-btn"
+          (click)="installPackage(package)"
+          [disabled]="actionInProgress[package.id]">
+          <span *ngIf="!actionInProgress[package.id]">⬇️ Instalar</span>
+          <span *ngIf="actionInProgress[package.id]">⏳ Instalando...</span>
+        </button>
+
+        <!-- Atualizar -->
+        <button 
+          *ngIf="package.installed && package.availableVersion && package.version !== package.availableVersion" 
+          class="action-btn update-btn"
+          (click)="updatePackage(package)"
+          [disabled]="actionInProgress[package.id]">
+          <span *ngIf="!actionInProgress[package.id]">⬆️ Atualizar</span>
+          <span *ngIf="actionInProgress[package.id]">⏳ Atualizando...</span>
+        </button>
+
+        <!-- Administrar -->
+        <button 
+          *ngIf="package.installed && package.hasAdminPanel" 
+          class="action-btn admin-btn"
+          (click)="openAdminPanel(package)">
+          ⚙️ Administrar
+        </button>
+
+        <!-- Remover -->
+        <button 
+          *ngIf="package.installed" 
+          class="action-btn remove-btn"
+          (click)="uninstallPackage(package)"
+          [disabled]="actionInProgress[package.id]">
+          <span *ngIf="!actionInProgress[package.id]">🗑️ Remover</span>
+          <span *ngIf="actionInProgress[package.id]">⏳ Removendo...</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Paginação -->
+  <div *ngIf="!loading && totalPages > 1" class="pagination">
+    <button 
+      class="pagination-btn" 
+      (click)="previousPage()" 
+      [disabled]="currentPage === 1">
+      ⬅️ Anterior
+    </button>
+
+    <div class="page-numbers">
+      <button 
+        *ngFor="let page of getPageNumbers()" 
+        class="page-btn"
+        [class.active]="page === currentPage"
+        (click)="goToPage(page)">
+        {{page}}
+      </button>
+    </div>
+
+    <button 
+      class="pagination-btn" 
+      (click)="nextPage()" 
+      [disabled]="currentPage === totalPages">
+      Próximo ➡️
+    </button>
+  </div>
+
+  <!-- Estatísticas -->
+  <div class="stats-section">
+    <div class="stat-item">
+      <span class="stat-number">{{totalPackages}}</span>
+      <span class="stat-label">Total de Pacotes</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{getInstalledCount()}}</span>
+      <span class="stat-label">Instalados</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-number">{{getUpdatesAvailableCount()}}</span>
+      <span class="stat-label">Atualizações Disponíveis</span>
+    </div>
+  </div>
+</div>
+  </div>
+
+  <div class="packages-actions">
+    <div class="search-box">
+      <i class="fas fa-search"></i>
+      <input type="text" placeholder="Buscar pacotes..." class="search-input">
+    </div>
+    <div class="filter-buttons">
+      <button class="btn btn-secondary active">Todos</button>
+      <button class="btn btn-secondary">Instalados</button>
+      <button class="btn btn-secondary">Disponíveis</button>
+      <button class="btn btn-secondary">Atualizações</button>
+    </div>
+    <button class="btn btn-primary">
+      <i class="fas fa-download"></i>
+      Atualizar Lista
+    </button>
+  </div>
+
+  <div class="packages-grid">
+    <!-- Lista de Pacotes -->
+    <div class="card packages-list-card">
+      <div class="card-header">
+        <h3>Pacotes Instalados</h3>
+        <span class="packages-count">1,247 pacotes</span>
+      </div>
+      <div class="card-body">
+        <div class="packages-table">
+          <div class="package-item">
+            <div class="package-info">
+              <div class="package-main">
+                <div class="package-name">nginx</div>
+                <div class="package-description">Servidor web de alta performance e proxy reverso</div>
+              </div>
+              <div class="package-details">
+                <span class="package-version">v1.18.0</span>
+                <span class="package-size">2.1 MB</span>
+                <span class="package-repo">main</span>
+              </div>
+            </div>
+            <div class="package-controls">
+              <span class="status-badge installed">
+                <span class="status-dot"></span>
+                Instalado
+              </span>
+              <div class="package-actions">
+                <button class="btn-icon" title="Atualizar">
+                  <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="btn-icon" title="Informações">
+                  <i class="fas fa-info-circle"></i>
+                </button>
+                <button class="btn-icon danger" title="Remover">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="package-item">
+            <div class="package-info">
+              <div class="package-main">
+                <div class="package-name">mysql-server</div>
+                <div class="package-description">Sistema de gerenciamento de banco de dados MySQL</div>
+              </div>
+              <div class="package-details">
+                <span class="package-version">v8.0.33</span>
+                <span class="package-size">45.2 MB</span>
+                <span class="package-repo">main</span>
+              </div>
+            </div>
+            <div class="package-controls">
+              <span class="status-badge available">
+                <span class="status-dot"></span>
+                Disponível
+              </span>
+              <div class="package-actions">
+                <button class="btn-icon success" title="Instalar">
+                  <i class="fas fa-download"></i>
+                </button>
+                <button class="btn-icon" title="Informações">
+                  <i class="fas fa-info-circle"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="package-item">
+            <div class="package-info">
+              <div class="package-main">
+                <div class="package-name">docker.io</div>
+                <div class="package-description">Plataforma de containerização Docker</div>
+              </div>
+              <div class="package-details">
+                <span class="package-version">v20.10.21</span>
+                <span class="package-size">78.5 MB</span>
+                <span class="package-repo">universe</span>
+              </div>
+            </div>
+            <div class="package-controls">
+              <span class="status-badge update">
+                <span class="status-dot"></span>
+                Atualização
+              </span>
+              <div class="package-actions">
+                <button class="btn-icon warning" title="Atualizar">
+                  <i class="fas fa-arrow-up"></i>
+                </button>
+                <button class="btn-icon" title="Informações">
+                  <i class="fas fa-info-circle"></i>
+                </button>
+                <button class="btn-icon danger" title="Remover">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="package-item">
+            <div class="package-info">
+              <div class="package-main">
+                <div class="package-name">postgresql</div>
+                <div class="package-description">Sistema de banco de dados PostgreSQL</div>
+              </div>
+              <div class="package-details">
+                <span class="package-version">v14.9</span>
+                <span class="package-size">15.8 MB</span>
+                <span class="package-repo">main</span>
+              </div>
+            </div>
+            <div class="package-controls">
+              <span class="status-badge installed">
+                <span class="status-dot"></span>
+                Instalado
+              </span>
+              <div class="package-actions">
+                <button class="btn-icon" title="Atualizar">
+                  <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="btn-icon" title="Informações">
+                  <i class="fas fa-info-circle"></i>
+                </button>
+                <button class="btn-icon danger" title="Remover">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="package-item">
+            <div class="package-info">
+              <div class="package-main">
+                <div class="package-name">htop</div>
+                <div class="package-description">Monitor interativo de processos do sistema</div>
+              </div>
+              <div class="package-details">
+                <span class="package-version">v3.2.1</span>
+                <span class="package-size">512 KB</span>
+                <span class="package-repo">universe</span>
+              </div>
+            </div>
+            <div class="package-controls">
+              <span class="status-badge installed">
+                <span class="status-dot"></span>
+                Instalado
+              </span>
+              <div class="package-actions">
+                <button class="btn-icon" title="Atualizar">
+                  <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="btn-icon" title="Informações">
+                  <i class="fas fa-info-circle"></i>
+                </button>
+                <button class="btn-icon danger" title="Remover">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="package-item">
+            <div class="package-info">
+              <div class="package-main">
+                <div class="package-name">git</div>
+                <div class="package-description">Sistema de controle de versão distribuído</div>
+              </div>
+              <div class="package-details">
+                <span class="package-version">v2.34.1</span>
+                <span class="package-size">8.9 MB</span>
+                <span class="package-repo">main</span>
+              </div>
+            </div>
+            <div class="package-controls">
+              <span class="status-badge update">
+                <span class="status-dot"></span>
+                Atualização
+              </span>
+              <div class="package-actions">
+                <button class="btn-icon warning" title="Atualizar">
+                  <i class="fas fa-arrow-up"></i>
+                </button>
+                <button class="btn-icon" title="Informações">
+                  <i class="fas fa-info-circle"></i>
+                </button>
+                <button class="btn-icon danger" title="Remover">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Estatísticas dos Pacotes -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Estatísticas</h3>
+      </div>
+      <div class="card-body">
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-icon installed">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">1,247</div>
+              <div class="stat-label">Instalados</div>
+            </div>
+          </div>
+          
+          <div class="stat-item">
+            <div class="stat-icon available">
+              <i class="fas fa-download"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">63,542</div>
+              <div class="stat-label">Disponíveis</div>
+            </div>
+          </div>
+          
+          <div class="stat-item">
+            <div class="stat-icon update">
+              <i class="fas fa-arrow-up"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">23</div>
+              <div class="stat-label">Atualizações</div>
+            </div>
+          </div>
+          
+          <div class="stat-item">
+            <div class="stat-icon size">
+              <i class="fas fa-hdd"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-value">2.8 GB</div>
+              <div class="stat-label">Espaço Usado</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Repositórios -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Repositórios</h3>
+        <button class="btn btn-secondary btn-sm">
+          <i class="fas fa-plus"></i>
+          Adicionar
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="repositories-list">
+          <div class="repo-item">
+            <div class="repo-info">
+              <div class="repo-name">main</div>
+              <div class="repo-url">http://archive.ubuntu.com/ubuntu</div>
+            </div>
+            <div class="repo-status">
+              <span class="status-badge active">Ativo</span>
+            </div>
+          </div>
+          
+          <div class="repo-item">
+            <div class="repo-info">
+              <div class="repo-name">universe</div>
+              <div class="repo-url">http://archive.ubuntu.com/ubuntu</div>
+            </div>
+            <div class="repo-status">
+              <span class="status-badge active">Ativo</span>
+            </div>
+          </div>
+          
+          <div class="repo-item">
+            <div class="repo-info">
+              <div class="repo-name">multiverse</div>
+              <div class="repo-url">http://archive.ubuntu.com/ubuntu</div>
+            </div>
+            <div class="repo-status">
+              <span class="status-badge inactive">Inativo</span>
+            </div>
+          </div>
+          
+          <div class="repo-item">
+            <div class="repo-info">
+              <div class="repo-name">docker</div>
+              <div class="repo-url">https://download.docker.com/linux/ubuntu</div>
+            </div>
+            <div class="repo-status">
+              <span class="status-badge active">Ativo</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Atualizações Pendentes -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Atualizações Pendentes</h3>
+        <button class="btn btn-success btn-sm">
+          <i class="fas fa-download"></i>
+          Atualizar Tudo
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="updates-list">
+          <div class="update-item">
+            <div class="update-icon">
+              <i class="fas fa-arrow-up"></i>
+            </div>
+            <div class="update-info">
+              <div class="update-package">docker.io</div>
+              <div class="update-versions">20.10.21 → 24.0.7</div>
+            </div>
+            <div class="update-size">78.5 MB</div>
+          </div>
+          
+          <div class="update-item">
+            <div class="update-icon">
+              <i class="fas fa-arrow-up"></i>
+            </div>
+            <div class="update-info">
+              <div class="update-package">git</div>
+              <div class="update-versions">2.34.1 → 2.40.1</div>
+            </div>
+            <div class="update-size">8.9 MB</div>
+          </div>
+          
+          <div class="update-item">
+            <div class="update-icon">
+              <i class="fas fa-shield-alt"></i>
+            </div>
+            <div class="update-info">
+              <div class="update-package">openssh-server</div>
+              <div class="update-versions">8.9p1 → 9.3p1</div>
+            </div>
+            <div class="update-size">1.2 MB</div>
+          </div>
+          
+          <div class="update-item security">
+            <div class="update-icon">
+              <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="update-info">
+              <div class="update-package">nginx</div>
+              <div class="update-versions">1.18.0 → 1.18.0-6ubuntu14.4</div>
+            </div>
+            <div class="update-size">2.1 MB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pacotes Recentes -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Atividade Recente</h3>
+      </div>
+      <div class="card-body">
+        <div class="activity-list">
+          <div class="activity-item">
+            <div class="activity-icon installed">
+              <i class="fas fa-download"></i>
+            </div>
+            <div class="activity-info">
+              <div class="activity-action">Instalado</div>
+              <div class="activity-package">htop v3.2.1</div>
+            </div>
+            <div class="activity-time">há 2 horas</div>
+          </div>
+          
+          <div class="activity-item">
+            <div class="activity-icon updated">
+              <i class="fas fa-sync-alt"></i>
+            </div>
+            <div class="activity-info">
+              <div class="activity-action">Atualizado</div>
+              <div class="activity-package">curl v7.81.0</div>
+            </div>
+            <div class="activity-time">há 1 dia</div>
+          </div>
+          
+          <div class="activity-item">
+            <div class="activity-icon removed">
+              <i class="fas fa-trash"></i>
+            </div>
+            <div class="activity-info">
+              <div class="activity-action">Removido</div>
+              <div class="activity-package">apache2 v2.4.52</div>
+            </div>
+            <div class="activity-time">há 3 dias</div>
+          </div>
+          
+          <div class="activity-item">
+            <div class="activity-icon installed">
+              <i class="fas fa-download"></i>
+            </div>
+            <div class="activity-info">
+              <div class="activity-action">Instalado</div>
+              <div class="activity-package">postgresql v14.9</div>
+            </div>
+            <div class="activity-time">há 1 semana</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ações em Lote -->
+    <div class="card">
+      <div class="card-header">
+        <h3>Ações em Lote</h3>
+      </div>
+      <div class="card-body">
+        <div class="batch-actions">
+          <div class="batch-info">
+            <p>Execute ações em múltiplos pacotes simultaneamente</p>
+          </div>
+          <div class="batch-buttons">
+            <button class="btn btn-success">
+              <i class="fas fa-download"></i>
+              Instalar Selecionados
+            </button>
+            <button class="btn btn-warning">
+              <i class="fas fa-sync-alt"></i>
+              Atualizar Selecionados
+            </button>
+            <button class="btn btn-danger">
+              <i class="fas fa-trash"></i>
+              Remover Selecionados
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
