@@ -70,7 +70,56 @@ Uma solução completa para administração de servidores Ubuntu com interface w
 - Git
 - 4GB RAM mínimo
 
-### Instalação Rápida
+### 📥 Instalação sem Docker (Recomendada para Produção)
+
+```bash
+# Download do script de instalação
+wget https://raw.githubusercontent.com/Mundo-Do-Software/SERVERADMIN/main/install.sh
+
+# Dar permissão de execução
+chmod +x install.sh
+
+# Executar instalação interativa
+sudo bash install.sh
+```
+
+#### ⚙️ Instalação Personalizada
+
+**Para Produção com Domínio Próprio:**
+```bash
+sudo bash install.sh \
+  --domain admin.meudominio.com \
+  --email admin@meudominio.com
+```
+
+**Para Desenvolvimento Local:**
+```bash
+sudo bash install.sh \
+  --domain localhost \
+  --email admin@localhost \
+  --skip-ssl
+```
+
+**Instalação Automática (Sem Prompts):**
+```bash
+sudo bash install.sh \
+  --domain exemplo.com \
+  --email admin@exemplo.com \
+  --auto
+```
+
+#### 📋 Parâmetros Disponíveis
+
+| Parâmetro | Descrição | Exemplo |
+|-----------|-----------|---------|
+| `--domain` | Domínio para o servidor | `admin.exemplo.com` |
+| `--email` | Email para certificados SSL | `admin@exemplo.com` |
+| `--directory` | Diretório de instalação | `/opt/ubuntu-server-admin` |
+| `--skip-ssl` | Pular configuração SSL | - |
+| `--auto` | Instalação automática | - |
+| `--help` | Mostrar ajuda | - |
+
+### 🐳 Instalação com Docker (Desenvolvimento)
 
 ```bash
 # Clone o repositório
@@ -91,6 +140,33 @@ cd SERVERADMIN
 ### Credenciais Padrão
 - **Usuário**: `admin`
 - **Senha**: `admin123`
+
+⚠️ **IMPORTANTE**: Altere essas credenciais após o primeiro login!
+
+### 🎛️ Gerenciamento Pós-Instalação
+
+Após a instalação, use o comando `serveradmin` para gerenciar o sistema:
+
+```bash
+# Gerenciamento básico
+serveradmin start      # Iniciar serviço
+serveradmin stop       # Parar serviço
+serveradmin restart    # Reiniciar serviço
+serveradmin status     # Ver status
+
+# Monitoramento
+serveradmin logs       # Ver logs em tempo real
+serveradmin health     # Verificar saúde do sistema
+
+# Manutenção
+serveradmin update     # Atualizar para nova versão
+```
+
+### 📚 Documentação Completa
+
+- **[INSTALLATION.md](INSTALLATION.md)** - Guia completo de instalação sem Docker
+- **[SCRIPTS.md](SCRIPTS.md)** - Documentação dos scripts de instalação
+- **[QUICKSTART.md](QUICKSTART.md)** - Guia rápido com Docker
 
 ## Funcionalidades
 
