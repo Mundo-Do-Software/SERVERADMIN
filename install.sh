@@ -217,6 +217,18 @@ prompt_config() {
 
 update_system() {
     log "Atualizando sistema..."
+    
+    # Corrigir problema do apt_pkg se existir
+    if ! python3 -c "import apt_pkg" 2>/dev/null; then
+        log_warning "Corrigindo problema do apt_pkg..."
+        apt install -y --reinstall python3-apt
+    fi
+    
+    # Limpar cache do apt para evitar problemas
+    apt clean
+    apt autoremove -y
+    
+    # Atualizar sistema
     apt update -qq
     apt upgrade -y -qq
     apt install -y software-properties-common curl wget git unzip bc
