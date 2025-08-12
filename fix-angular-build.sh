@@ -25,7 +25,30 @@ log_error() {
     echo -e "${RED}[ERROR] $1${NC}"
 }
 
-FRONTEND_DIR="/opt/ubuntu-server-admin/frontend/ubuntu-server-admin"
+# Verificar se está executando como root
+if [[ $EUID -ne 0 ]]; then
+    log_error "Este script deve ser executado como root (sudo)"
+    exit 1
+fi
+
+# Corrigir problema de ownership do Git
+log "Corrigindo configuração do Git..."
+INSTALL_DIR="/opt/ubuntu-server-admin"
+
+if [[ ! -d "$INSTALL_DIR" ]]; then
+    log_error "Diretório de instalação não encontrado: $INSTALL_DIR"
+    exit 1
+fi
+
+cd "$INSTALL_DIR"
+
+# Adicionar diretório como seguro
+git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+
+# Corrigir ownership se necessário
+chown -R serveradmin:serveradmin "$INSTALL_DIR"
+
+FRONTEND_DIR="$INSTALL_DIR/frontend/ubuntu-server-admin"
 
 if [[ ! -d "$FRONTEND_DIR" ]]; then
     log_error "Diretório do frontend não encontrado: $FRONTEND_DIR"
