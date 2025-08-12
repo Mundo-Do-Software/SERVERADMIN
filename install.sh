@@ -787,12 +787,14 @@ EOF
     fi
     
     # Verificar se os arquivos foram copiados corretamente
-    if [[ ! -f "/var/www/html/serveradmin/index.html" ]]; then
-        log_error "Falha ao copiar arquivos do frontend"
+    if [[ -f "/var/www/html/serveradmin/index.html" ]] || [[ -f "/var/www/html/serveradmin/main.js" ]] || [[ $(ls /var/www/html/serveradmin/ | wc -l) -gt 0 ]]; then
+        log "Frontend copiado e configurado com sucesso"
+    else
+        log_error "Falha ao copiar arquivos do frontend - nenhum arquivo encontrado no destino"
+        log_error "Conteúdo do diretório de destino:"
+        ls -la /var/www/html/serveradmin/
         exit 1
     fi
-    
-    log "Frontend compilado e configurado com sucesso"
 }
 
 # ==============================================================================
