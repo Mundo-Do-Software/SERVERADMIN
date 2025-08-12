@@ -914,14 +914,36 @@ setup_ssl() {
     log "Configurando certificado SSL..."
     
     if [[ "$DOMAIN" != "localhost" && "$DOMAIN" != "127.0.0.1" ]]; then
-        # Obter certificado SSL real
-        certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "$SSL_EMAIL"
+        # Tentar corrigir problemas com certbot primeiro
+        log_info "Verificando e corrigindo dependências do certbot..."
         
-        # Configurar renovação automática
-        systemctl enable certbot.timer
-        systemctl start certbot.timer
+        # Corrigir problemas conhecidos com cffi
+        apt-get update
+        apt-get install -y python3-cffi libffi-dev python3-dev
         
-        log "Certificado SSL configurado para $DOMAIN"
+        # Reinstalar certbot se necessário
+        if ! certbot --version &>/dev/null; then
+            log_warning "Problemas detectados com certbot, reinstalando..."
+            apt-get remove -y certbot python3-certbot-nginx
+            apt-get install -y snapd
+            snap install core
+            snap refresh core
+            snap install --classic certbot
+            ln -sf /snap/bin/certbot /usr/bin/certbot
+        fi
+        
+        # Tentar obter certificado SSL real
+        log_info "Obtendo certificado SSL para $DOMAIN..."
+        if certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "$SSL_EMAIL" 2>&1; then
+            # Configurar renovação automática
+            systemctl enable certbot.timer 2>/dev/null || true
+            systemctl start certbot.timer 2>/dev/null || true
+            log "Certificado SSL configurado para $DOMAIN"
+        else
+            log_warning "Falha ao obter certificado SSL. Continuando sem SSL..."
+            log_warning "Você pode configurar SSL manualmente depois com:"
+            log_warning "sudo certbot --nginx -d $DOMAIN"
+        fi
     else
         log_warning "Certificado SSL não configurado para localhost"
     fi
