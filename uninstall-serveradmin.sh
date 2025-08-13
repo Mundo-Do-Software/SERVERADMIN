@@ -6,7 +6,7 @@ set -e
 
 # Parar serviços
 sudo systemctl stop nginx || true
-sudo systemctl stop serveradmin || true
+sudo systemctl stop ubuntu-server-admin || true
 
 # Remover arquivos do frontend
 sudo rm -rf /var/www/html/serveradmin
