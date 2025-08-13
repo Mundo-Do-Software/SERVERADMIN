@@ -137,17 +137,19 @@ EOF
 setup_nginx() {
     log "Configurando NGINX..."
     
-    cat > /etc/nginx/sites-available/serveradmin << EOF
+    # Gerar config do NGINX sem expandir variáveis ($uri, $host, etc.)
+    # Usamos um placeholder __DOMAIN__ e substituímos após criar o arquivo.
+    cat > /etc/nginx/sites-available/serveradmin << 'EOF'
 server {
     listen 80;
-    server_name $DOMAIN;
+    server_name __DOMAIN__;
     root /var/www/html/serveradmin/browser;
     index index.html;
 
     # ACME challenge (Certbot)
     location /.well-known/acme-challenge/ {
         root /var/www/html;
-        try_files \$uri =404;
+        try_files $uri =404;
     }
 
     # Frontend
@@ -162,6 +164,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
     }
 
     # Logs
@@ -169,6 +172,9 @@ server {
     error_log /var/log/nginx/serveradmin.error.log;
 }
 EOF
+
+    # Substituir placeholder do domínio
+    sed -i "s/__DOMAIN__/$DOMAIN/g" /etc/nginx/sites-available/serveradmin
 
     # Ativar site
     ln -sf /etc/nginx/sites-available/serveradmin /etc/nginx/sites-enabled/
