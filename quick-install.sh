@@ -88,20 +88,31 @@ setup_database() {
 
 # 5. Clonar e configurar aplicação
 setup_application() {
-    log "Configurando aplicação..."
-    
-    # Limpar diretório se existir
+    log "Removendo instalações antigas..."
+    # Remover backend antigo
     rm -rf "$INSTALL_DIR"
-    
+    # Remover frontend antigo
+    rm -rf /var/www/html/serveradmin
+    # Remover configuração do NGINX
+    rm -f /etc/nginx/sites-available/serveradmin
+    rm -f /etc/nginx/sites-enabled/serveradmin
+    # Remover certificados SSL
+    rm -rf /etc/letsencrypt/live/$DOMAIN
+    rm -rf /etc/letsencrypt/archive/$DOMAIN
+    rm -f /etc/letsencrypt/renewal/$DOMAIN.conf
+    # Remover logs
+    rm -f /var/log/nginx/serveradmin.*
+
+    log "Configurando aplicação..."
     # Clonar repositório usando SSH (chave já configurada)
     git clone git@github.com:Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"
     chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
-    
+
     # Configurar backend
     cd "$INSTALL_DIR/backend"
     sudo -u "$SERVICE_USER" python3 -m venv venv
     sudo -u "$SERVICE_USER" venv/bin/pip install -r requirements.txt
-    
+
     # Criar arquivo .env
     sudo -u "$SERVICE_USER" cat > .env << EOF
 DATABASE_URL=postgresql://serveradmin:serveradmin123@localhost/serveradmin
@@ -115,9 +126,8 @@ EOF
     cd "$INSTALL_DIR/frontend/ubuntu-server-admin"
     sudo -u "$SERVICE_USER" npm install
     sudo -u "$SERVICE_USER" npm run build
-    
+
     # Copiar arquivos buildados
-    rm -rf /var/www/html/serveradmin
     mkdir -p /var/www/html/serveradmin
     cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/
     chown -R www-data:www-data /var/www/html/serveradmin
