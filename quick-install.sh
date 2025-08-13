@@ -127,9 +127,9 @@ EOF
     sudo -u "$SERVICE_USER" npm install
     sudo -u "$SERVICE_USER" npm run build
 
-    # Copiar arquivos buildados
-    mkdir -p /var/www/html/serveradmin
-    cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/
+    # Copiar arquivos buildados (Angular output em /browser)
+    mkdir -p /var/www/html/serveradmin/browser
+    cp -r dist/ubuntu-server-admin/browser/* /var/www/html/serveradmin/browser/
     chown -R www-data:www-data /var/www/html/serveradmin
 }
 
@@ -137,12 +137,18 @@ EOF
 setup_nginx() {
     log "Configurando NGINX..."
     
-    cat > /etc/nginx/sites-available/serveradmin << 'EOF'
+    cat > /etc/nginx/sites-available/serveradmin << EOF
 server {
     listen 80;
-    server_name _;
-    root /var/www/html/serveradmin;
+    server_name $DOMAIN;
+    root /var/www/html/serveradmin/browser;
     index index.html;
+
+    # ACME challenge (Certbot)
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+        try_files \$uri =404;
+    }
 
     # Frontend
     location / {
