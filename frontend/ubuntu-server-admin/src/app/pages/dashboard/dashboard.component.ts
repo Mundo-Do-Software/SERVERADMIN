@@ -1,4 +1,5 @@
 import { Component, OnInit } from '@angular/core';
+import { environment } from '../../../environments/environment';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -212,7 +213,7 @@ interface DashboardStats {
               </span>
             </div>
             <div class="api-url">
-              Backend: http://localhost:8000
+              Backend: {{ environment.apiUrl }}
             </div>
           </mat-card-content>
           <mat-card-actions>
@@ -361,6 +362,7 @@ export class DashboardComponent implements OnInit {
   stats: DashboardStats | null = null;
   loading = true;
   apiStatus = false;
+  environment = environment;
 
   constructor(
     private systemService: SystemService,
@@ -492,6 +494,7 @@ export class DashboardComponent implements OnInit {
   }
 
   openApiDocs() {
-    window.open('http://localhost:8000/docs', '_blank');
+    const base = environment.apiUrl.replace('/api/v1','');
+    window.open(base + '/docs', '_blank');
   }
 }

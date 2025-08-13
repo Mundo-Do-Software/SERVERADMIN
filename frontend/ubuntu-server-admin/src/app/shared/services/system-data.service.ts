@@ -3,12 +3,13 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, BehaviorSubject, timer } from 'rxjs';
 import { catchError, tap, switchMap } from 'rxjs/operators';
 import { SystemInfo, ServicesResponse, NetworkInterface, DiskInfo, ProcessInfo } from '../models/system.model';
+import { environment } from '../../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class SystemDataService {
-  private readonly API_BASE = 'http://localhost:8000/api/v1';
+  private readonly API_BASE = environment.apiUrl;
   private connectionStatus = new BehaviorSubject<boolean>(false);
   private systemInfoSubject = new BehaviorSubject<SystemInfo | null>(null);
   private servicesSubject = new BehaviorSubject<ServicesResponse | null>(null);
@@ -72,7 +73,8 @@ export class SystemDataService {
   }
 
   getHealthCheck(): Observable<any> {
-    return this.http.get(`${this.API_BASE}/../health`);
+    const base = this.API_BASE.replace('/api/v1', '');
+    return this.http.get(`${base}/health`);
   }
 
   restartService(serviceName: string): Observable<any> {

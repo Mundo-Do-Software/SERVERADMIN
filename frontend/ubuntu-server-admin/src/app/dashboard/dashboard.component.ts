@@ -1,4 +1,5 @@
 import { Component, OnInit } from '@angular/core';
+import { environment } from '../../environments/environment';
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
 
@@ -79,7 +80,7 @@ import { HttpClient, HttpClientModule } from '@angular/common/http';
               <strong>Last Update:</strong> {{ lastUpdate || 'Never' }}
             </div>
             <div class="backend-url">
-              Backend URL: http://localhost:8000
+              Backend URL: {{ environment.apiUrl }}
             </div>
           </div>
         </div>
@@ -106,6 +107,7 @@ export class DashboardComponent implements OnInit {
   lastUpdate: string | null = null;
   backendStatus = '';
   error: string | null = null;
+  environment = environment;
 
   constructor(private http: HttpClient) {}
 
@@ -120,7 +122,7 @@ export class DashboardComponent implements OnInit {
   }
 
   loadSystemInfo() {
-    this.http.get<any>('http://localhost:8000/api/v1/system/info').subscribe({
+  this.http.get<any>(`${environment.apiUrl}/system/info`).subscribe({
       next: (data) => {
         this.systemInfo = data;
         this.isBackendConnected = true;
@@ -137,7 +139,7 @@ export class DashboardComponent implements OnInit {
   }
 
   loadServices() {
-    this.http.get<any>('http://localhost:8000/api/v1/services').subscribe({
+  this.http.get<any>(`${environment.apiUrl}/services`).subscribe({
       next: (data) => {
         this.services = data.services || [];
         this.isBackendConnected = true;
@@ -163,7 +165,7 @@ export class DashboardComponent implements OnInit {
 
   testBackend() {
     this.backendStatus = 'Testing backend connection...';
-    this.http.get('http://localhost:8000/health').subscribe({
+  this.http.get(`${environment.apiUrl}`.replace('/api/v1','') + '/health').subscribe({
       next: (response) => {
         this.backendStatus = '✅ Backend connection successful!';
         this.isBackendConnected = true;
