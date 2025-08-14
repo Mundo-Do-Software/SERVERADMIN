@@ -26,6 +26,14 @@ except Exception:
     simplepam = None
     _pam_available = False
 
+# Optional fallback: python-pam library
+try:
+    from pam import pam as PamLib  # type: ignore
+    _pam2_available = True
+except Exception:
+    PamLib = None
+    _pam2_available = False
+
 """Auth routes with system-user and optional env-admin support."""
 
 # Ensure backend/.env is loaded so os.getenv picks values when running via systemd
@@ -78,6 +86,8 @@ def verify_user_credentials(username: str, password: str) -> bool:
     """
     # 1) Fallback admin por ambiente (somente se NÃO exigir usuário do sistema)
     try:
+        username = (username or "").strip()
+        password = password or ""
         if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
             _dbg("Env-admin path attempted")
             # Hash tem prioridade
@@ -108,6 +118,18 @@ def verify_user_credentials(username: str, password: str) -> bool:
         return False
 
     try:
+        if _pam2_available:
+            pamh = PamLib()
+            pam_services = ['login', 'su', 'sshd', 'sudo', 'common-auth', 'system-auth']
+            for svc in pam_services:
+                try:
+                    ok = bool(pamh.authenticate(username, password, service=svc))
+                    _dbg(f"python-pam service '{svc}' result: {ok}")
+                    if ok:
+                        return True
+                except Exception as e:
+                    _dbg(f"python-pam service '{svc}' error: {e}")
+            # fallthrough to simplepam
         if _pam_available:
             # Tenta múltiplos serviços PAM comuns no Ubuntu/Debian/CentOS
             pam_services = ['login', 'su', 'sshd', 'sudo', 'common-auth', 'system-auth']
