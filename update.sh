@@ -418,7 +418,8 @@ main() {
 }
 
 # Verificar argumentos
-if [[ "$1" == "rollback" ]]; then
+ARG1="${1-}"
+if [[ "$ARG1" == "rollback" ]]; then
     check_root
     detect_service_user >/dev/null
     rollback
