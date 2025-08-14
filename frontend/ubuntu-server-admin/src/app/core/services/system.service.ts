@@ -113,6 +113,20 @@ export interface SystemNetworkInterface {
   packets_recv: number;
 }
 
+export type BenchmarkType = 'cpu' | 'disk' | 'memory' | 'gpu';
+
+export interface BenchmarkRequest {
+  type: BenchmarkType;
+  duration?: number;
+  size_mb?: number;
+  threads?: number | null;
+}
+
+export interface BenchmarkResult {
+  type: BenchmarkType | string;
+  [key: string]: any;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -180,6 +194,13 @@ export class SystemService {
 
   updateSystem(): Observable<{ message: string }> {
     return this.http.post<{ message: string }>(`${this.apiUrl}/system/update`, {})
+      .pipe(
+        catchError(this.handleError)
+      );
+  }
+
+  runBenchmark(req: BenchmarkRequest): Observable<BenchmarkResult> {
+    return this.http.post<BenchmarkResult>(`${this.apiUrl}/system/benchmark`, req)
       .pipe(
         catchError(this.handleError)
       );

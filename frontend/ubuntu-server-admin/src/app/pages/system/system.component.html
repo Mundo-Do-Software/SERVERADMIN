@@ -180,5 +180,42 @@
         </div>
       </div>
     </div>
+
+    <!-- Benchmarks -->
+    <div class="card benchmarks">
+      <div class="card-header">
+        <h3>Benchmarks</h3>
+      </div>
+      <div class="card-body">
+        <div class="bench-form">
+          <label>
+            Tipo:
+            <select [(ngModel)]="benchType">
+              <option value="cpu">CPU</option>
+              <option value="disk">Disco</option>
+              <option value="memory">Memória</option>
+              <option value="gpu">GPU</option>
+            </select>
+          </label>
+          <label>
+            Duração (s):
+            <input type="number" min="1" [(ngModel)]="benchDuration" />
+          </label>
+          <label *ngIf="benchType === 'disk' || benchType === 'memory'">
+            Tamanho (MB):
+            <input type="number" min="16" [(ngModel)]="benchSizeMb" />
+          </label>
+          <label *ngIf="benchType === 'cpu'">
+            Threads (opcional):
+            <input type="number" min="1" [(ngModel)]="benchThreads" />
+          </label>
+          <button class="btn btn-primary" (click)="runBenchmark()" [disabled]="benchRunning">
+            <i class="fas fa-bolt" [class.fa-spin]="benchRunning"></i>
+            {{ benchRunning ? 'Executando...' : 'Executar' }}
+          </button>
+        </div>
+        <pre class="bench-result" *ngIf="benchResult as r">{{ r | json }}</pre>
+      </div>
+    </div>
   </div>
 </div>

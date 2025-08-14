@@ -1,12 +1,13 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { SystemService, SystemInfo, ProcessInfo, DiskInfo } from '../../core/services/system.service';
+import { FormsModule } from '@angular/forms';
+import { SystemService, SystemInfo, ProcessInfo, DiskInfo, BenchmarkRequest, BenchmarkResult } from '../../core/services/system.service';
 import { interval, Subscription } from 'rxjs';
 import { startWith, switchMap } from 'rxjs/operators';
 
 @Component({
   selector: 'app-system',
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './system.component.html',
   styleUrl: './system.component.scss'
 })
@@ -16,6 +17,13 @@ export class SystemComponent implements OnInit, OnDestroy {
   disks: DiskInfo[] = [];
   isLoading = true;
   error: string | null = null;
+  // Benchmark state
+  benchType: 'cpu' | 'disk' | 'memory' | 'gpu' = 'cpu';
+  benchDuration = 10;
+  benchSizeMb = 256;
+  benchThreads: number | null = null;
+  benchRunning = false;
+  benchResult: BenchmarkResult | null = null;
   
   private refreshSubscription: Subscription | null = null;
 
@@ -100,5 +108,26 @@ export class SystemComponent implements OnInit, OnDestroy {
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  runBenchmark(): void {
+    this.benchRunning = true;
+    this.benchResult = null;
+    const req: BenchmarkRequest = {
+      type: this.benchType,
+      duration: this.benchDuration,
+      size_mb: this.benchType === 'disk' || this.benchType === 'memory' ? this.benchSizeMb : undefined,
+      threads: this.benchType === 'cpu' ? (this.benchThreads ?? undefined) : undefined,
+    };
+    this.systemService.runBenchmark(req).subscribe({
+      next: (res) => {
+        this.benchResult = res;
+        this.benchRunning = false;
+      },
+      error: (err) => {
+        this.benchResult = { type: this.benchType, error: err.message };
+        this.benchRunning = false;
+      },
+    });
   }
 }
