@@ -5,17 +5,20 @@ import { environment } from '../../../environments/environment';
   providedIn: 'root'
 })
 export class ApiConfigService {
-  private readonly baseUrl = environment.apiBaseUrl;
+  private readonly baseUrl = environment.apiBaseUrl || environment.apiUrl.replace(/\/(v\d+)?$/, '');
   
   getApiUrl(): string {
     return this.baseUrl;
   }
   
   getHealthUrl(): string {
-    return environment.production ? '/health' : 'http://localhost:8000/health';
+    // Derive from apiUrl base to work in any env (proxy or direct)
+    const base = environment.apiUrl.replace(/\/?api\/v\d+.*/, '');
+    return `${base}/health`;
   }
   
   getDocsUrl(): string {
-    return environment.production ? '/docs' : 'http://localhost:8000/docs';
+    const base = environment.apiUrl.replace(/\/?api\/v\d+.*/, '');
+    return `${base}/docs`;
   }
 }

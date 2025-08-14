@@ -60,7 +60,8 @@ export interface LogStatistics {
   providedIn: 'root'
 })
 export class LogService {
-  private apiUrl = environment.apiBaseUrl;
+  // Use the versioned API root (e.g., '/api/v1')
+  private apiUrl = environment.apiUrl;
 
   constructor(private http: HttpClient) {}
 

@@ -174,10 +174,10 @@ if [[ -d "dist" ]]; then
         
         # Copiar para diretório web se executando como root
         if [[ $EUID -eq 0 ]]; then
-            log "Copiando arquivos para /var/www/html/serveradmin..."
-            rm -rf /var/www/html/serveradmin
-            mkdir -p /var/www/html/serveradmin
-            cp -r "$BUILD_DIR"/* /var/www/html/serveradmin/
+            log "Copiando arquivos para /var/www/html/serveradmin/browser..."
+            rm -rf /var/www/html/serveradmin/browser
+            mkdir -p /var/www/html/serveradmin/browser
+            cp -r "$BUILD_DIR"/* /var/www/html/serveradmin/browser/
             chown -R www-data:www-data /var/www/html/serveradmin
             log "✅ Arquivos copiados para o servidor web"
         fi

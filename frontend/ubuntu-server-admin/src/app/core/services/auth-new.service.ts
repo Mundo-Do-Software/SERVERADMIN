@@ -4,6 +4,7 @@ import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 import { catchError, tap, map } from 'rxjs/operators';
 import { isPlatformBrowser } from '@angular/common';
 import { PLATFORM_ID, Inject } from '@angular/core';
+import { environment } from '../../../environments/environment';
 
 export interface AuthResponse {
   success: boolean;
@@ -32,7 +33,8 @@ export interface LoginCredentials {
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = 'http://localhost:8000/api/v1';
+  // Use environment so production builds target the same-origin /api proxy
+  private apiUrl = environment.apiUrl;
   private isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
   private currentUserSubject = new BehaviorSubject<UserInfo | null>(null);
 

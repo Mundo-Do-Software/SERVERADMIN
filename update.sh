@@ -118,9 +118,15 @@ update_frontend() {
     # Build para produção
     sudo -u "$SERVICE_USER" npm run build
     
-    # Atualizar arquivos do NGINX
-    rm -rf /var/www/html/serveradmin/*
-    cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/
+    # Atualizar arquivos do NGINX (usar saída browser do Angular)
+    mkdir -p /var/www/html/serveradmin/browser
+    rm -rf /var/www/html/serveradmin/browser/*
+    if [[ -d "dist/ubuntu-server-admin/browser" ]]; then
+        cp -r dist/ubuntu-server-admin/browser/* /var/www/html/serveradmin/browser/
+    else
+        # Compatibilidade com builds antigos sem subpasta browser
+        cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/browser/
+    fi
     chown -R www-data:www-data /var/www/html/serveradmin
     
     log "Frontend atualizado"
@@ -156,11 +162,18 @@ test_api() {
     # Aguardar inicialização
     sleep 10
     
-    # Testar endpoint de health
-    if curl -f -s http://localhost:8000/health &>/dev/null; then
-        log "API está respondendo"
+    # Testar endpoint de health diretamente no backend
+    if curl -f -s http://127.0.0.1:8000/health &>/dev/null; then
+        log "API (backend) está respondendo em 127.0.0.1:8000"
     else
-        log_warning "API pode não estar respondendo corretamente"
+        log_warning "Backend em 127.0.0.1:8000 pode não estar respondendo"
+    fi
+
+    # Testar via NGINX (proxy) usando caminho relativo padrão
+    if curl -f -s http://127.0.0.1/api/v1/health &>/dev/null; then
+        log "API via NGINX está acessível em /api/v1/health"
+    else
+        log_warning "Proxy NGINX para /api pode não estar configurado/ativo"
     fi
 }
 
@@ -240,8 +253,14 @@ rollback() {
         sudo -u postgres psql -d serveradmin < "$BACKUP_DIR/${LATEST_BACKUP}_database.sql"
     fi
     
-    # Restaurar frontend
-    cp -r "$INSTALL_DIR/frontend/ubuntu-server-admin/dist/ubuntu-server-admin"/* /var/www/html/serveradmin/
+    # Restaurar frontend (browser)
+    mkdir -p /var/www/html/serveradmin/browser
+    rm -rf /var/www/html/serveradmin/browser/*
+    if [[ -d "$INSTALL_DIR/frontend/ubuntu-server-admin/dist/ubuntu-server-admin/browser" ]]; then
+        cp -r "$INSTALL_DIR/frontend/ubuntu-server-admin/dist/ubuntu-server-admin/browser"/* /var/www/html/serveradmin/browser/
+    else
+        cp -r "$INSTALL_DIR/frontend/ubuntu-server-admin/dist/ubuntu-server-admin"/* /var/www/html/serveradmin/browser/
+    fi
     chown -R www-data:www-data /var/www/html/serveradmin
     
     # Reiniciar serviços
