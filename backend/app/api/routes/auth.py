@@ -81,6 +81,8 @@ class LoginRequest(BaseModel):
 class AuthResponse(BaseModel):
     success: bool
     token: Optional[str] = None
+    access_token: Optional[str] = None  # compatibility for clients expecting this key
+    token_type: Optional[str] = None
     user: Optional[Dict[str, Any]] = None
     message: Optional[str] = None
 
@@ -168,15 +170,15 @@ def verify_user_credentials(username: str, password: str) -> bool:
         # Final fallback: use 'su' with a pseudo-terminal
         if _pexpect_available:
             try:
-                cmd = f"su - {shlex.quote(username)} -c 'id -u'"
-                _dbg(f"pexpect running: {cmd}")
-                child = pexpect.spawn('/bin/bash', ['-lc', cmd], encoding='utf-8', timeout=20)
-                # Match common password prompt texts
-                idx = child.expect([r'[Pp]assword:', r'Authentication failure', r'incorrect password', pexpect.EOF, pexpect.TIMEOUT])
-                if idx == 0:
+                cmd = ["/bin/su", "-", username, "-c", "id -u"]
+                _dbg(f"pexpect running: {' '.join(map(shlex.quote, cmd))}")
+                child = pexpect.spawn(cmd[0], cmd[1:], encoding='utf-8', timeout=25)
+                # Match EN and PT-BR prompts and failures
+                prompt_patterns = [r'[Pp]assword:', r'Senha:', r'Authentication failure', r'falha', r'incorrect password', pexpect.EOF, pexpect.TIMEOUT]
+                idx = child.expect(prompt_patterns)
+                if idx in (0, 1):  # got password prompt
                     child.sendline(password)
-                    # After sending password, expect either success (EOF with exit 0) or failure messages
-                    idx2 = child.expect([pexpect.EOF, r'Authentication failure', r'incorrect password', pexpect.TIMEOUT])
+                    idx2 = child.expect([pexpect.EOF, r'Authentication failure', r'falha', r'incorrect password', pexpect.TIMEOUT])
                     child.close()
                     ok = (child.exitstatus == 0 and idx2 == 0)
                     _dbg(f"pexpect su result: {ok}, status={child.exitstatus}, idx2={idx2}")
@@ -342,6 +344,8 @@ async def login(request: LoginRequest):
         return AuthResponse(
             success=True,
             token=access_token,
+            access_token=access_token,
+            token_type="bearer",
             user=user_info,
             message="Login realizado com sucesso"
         )
