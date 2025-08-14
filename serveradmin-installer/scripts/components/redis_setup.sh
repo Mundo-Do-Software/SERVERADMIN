@@ -1,34 +1,64 @@
-#!/usr/bin/env bash
-set -Eeuo pipefail
+#!/bin/bash
 
-# =========================
-# Redis Setup Script
-# =========================
-
-log_info() {
-  echo -e "\e[32m[INFO] $1\e[0m"
-}
-
-log_error() {
-  echo -e "\e[31m[ERROR] $1\e[0m" >&2
-}
+# Redis Installation and Configuration
 
 install_redis() {
-  log_info "Iniciando a instalação do Redis..."
-  
-  if ! command -v redis-server &> /dev/null; then
-    apt update -qq
-    apt install -y redis-server
-    log_info "Redis instalado com sucesso."
-  else
-    log_info "Redis já está instalado."
-  fi
-
-  log_info "Configurando Redis..."
-  sed -i 's/^supervised .*/supervised systemd/' /etc/redis/redis.conf
-  systemctl enable redis-server
-  systemctl start redis-server
-  log_info "Redis configurado e iniciado."
+    log_info "Installing Redis..."
+    
+    # Install Redis
+    apt install -y redis-server || {
+        log_error "Failed to install Redis"
+        exit 1
+    }
+    
+    # Start and enable Redis
+    systemctl start redis-server
+    systemctl enable redis-server
+    
+    if is_service_running redis-server; then
+        log_success "Redis installed and running"
+    else
+        log_error "Redis installed but not running"
+        exit 1
+    fi
+    
+    # Configure Redis
+    configure_redis
 }
 
-install_redis
+configure_redis() {
+    log_info "Configuring Redis..."
+    
+    local redis_config="/etc/redis/redis.conf"
+    
+    # Backup original config
+    cp "$redis_config" "${redis_config}.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Configure Redis for production use
+    sed -i 's/^# maxmemory <bytes>/maxmemory 256mb/' "$redis_config"
+    sed -i 's/^# maxmemory-policy noeviction/maxmemory-policy allkeys-lru/' "$redis_config"
+    
+    # Set up password protection
+    local redis_password=$(generate_redis_password)
+    sed -i "s/^# requirepass foobared/requirepass $redis_password/" "$redis_config"
+    
+    # Restart Redis to apply changes
+    systemctl restart redis-server
+    
+    # Save Redis configuration
+    local config_file="$(dirname "$0")/../config/redis.conf"
+    cat > "$config_file" << EOF
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=$redis_password
+EOF
+
+    chmod 600 "$config_file"
+    log_success "Redis configured successfully"
+    log_info "Redis credentials saved to: $config_file"
+}
+
+generate_redis_password() {
+    openssl rand -base64 32 | tr -d "=+/" | cut -c1-25
+}

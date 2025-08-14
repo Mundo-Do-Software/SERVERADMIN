@@ -1,14 +1,27 @@
-# filepath: /serveradmin-installer/serveradmin-installer/scripts/utils/colors.sh
-# This file defines color codes for terminal output, allowing for colored logging messages.
+#!/bin/bash
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-PURPLE='\033[0;35m'
-NC='\033[0m'  # No Color
+# Color definitions for terminal output
+declare -r RED='\033[0;31m'
+declare -r GREEN='\033[0;32m'
+declare -r YELLOW='\033[1;33m'
+declare -r BLUE='\033[0;34m'
+declare -r PURPLE='\033[0;35m'
+declare -r CYAN='\033[0;36m'
+declare -r WHITE='\033[1;37m'
+declare -r NC='\033[0m' # No Color
 
-# Usage:
-# To use these colors in echo statements, you can do:
-# echo -e "${GREEN}This is a green message${NC}"
+# Function to print colored text
+print_color() {
+    local color=$1
+    local message=$2
+    echo -e "${color}${message}${NC}"
+}
+
+# Specific color functions
+print_red() { print_color "$RED" "$1"; }
+print_green() { print_color "$GREEN" "$1"; }
+print_yellow() { print_color "$YELLOW" "$1"; }
+print_blue() { print_color "$BLUE" "$1"; }
+print_purple() { print_color "$PURPLE" "$1"; }
+print_cyan() { print_color "$CYAN" "$1"; }
+print_white() { print_color "$WHITE" "$1"; }
