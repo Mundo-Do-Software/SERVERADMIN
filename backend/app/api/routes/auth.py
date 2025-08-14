@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import subprocess
 import jwt
 from pathlib import Path
+import shlex
 from dotenv import load_dotenv
 try:
     # PyJWT <-> exceptions compatibility
@@ -33,6 +34,14 @@ try:
 except Exception:
     PamLib = None
     _pam2_available = False
+
+# Optional fallback: pexpect to drive 'su' via a PTY when PAM misbehaves
+try:
+    import pexpect  # type: ignore
+    _pexpect_available = True
+except Exception:
+    pexpect = None
+    _pexpect_available = False
 
 """Auth routes with system-user and optional env-admin support."""
 
@@ -149,6 +158,29 @@ def verify_user_credentials(username: str, password: str) -> bool:
         else:
             _dbg("PAM not available; cannot verify system user credentials")
             return False
+
+        # Final fallback: use 'su' with a pseudo-terminal
+        if _pexpect_available:
+            try:
+                cmd = f"su - {shlex.quote(username)} -c 'id -u'"
+                _dbg(f"pexpect running: {cmd}")
+                child = pexpect.spawn('/bin/bash', ['-lc', cmd], encoding='utf-8', timeout=15)
+                # Expect password prompt (language agnostic patterns)
+                idx = child.expect([r'[Pp]assword:', r'su: Authentication failure', r'failure', pexpect.EOF, pexpect.TIMEOUT])
+                if idx == 0:
+                    child.sendline(password)
+                    child.expect([pexpect.EOF, r'Authentication failure', r'incorrect password', pexpect.TIMEOUT])
+                    child.close()
+                    ok = (child.exitstatus == 0)
+                    _dbg(f"pexpect su result: {ok}, status={child.exitstatus}")
+                    return ok
+                else:
+                    _dbg(f"pexpect su did not get password prompt (idx={idx})")
+            except Exception as e:
+                _dbg(f"pexpect su error: {e}")
+        else:
+            _dbg("pexpect not available; skipping su fallback")
+        return False
     except Exception as e:
         print(f"Error verifying credentials: {e}")
         return False

@@ -18,3 +18,4 @@ bcrypt==4.1.2
 requests==2.31.0
 simplepam==0.1.5
 python-pam==2.0.2
+pexpect==4.9.0
