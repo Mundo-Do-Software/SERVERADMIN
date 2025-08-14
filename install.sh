@@ -21,7 +21,7 @@ log_error() { echo -e "${RED}$(timestamp) ERROR: $*${NC}" >&2; }
 trap 'log_error "Falha na linha $LINENO"; exit 1' ERR
 
 # =========================
-# ConfiguraÃ§Ãµes padrÃ£o
+# ConfiguraÃƒÂ§ÃƒÂµes padrÃƒÂ£o
 # =========================
 SERVICE_USER="serveradmin"
 INSTALL_DIR="/opt/ubuntu-server-admin"
@@ -57,17 +57,17 @@ detect_ips() {
   LOCAL_IPV4S=$(ip -4 addr show scope global 2>/dev/null | awk '/inet /{print $2}' | cut -d'/' -f1 | tr '\n' ' ' | sed 's/ *$//')
   LOCAL_IPV6S=$(ip -6 addr show scope global 2>/dev/null | awk '/inet6 /{print $2}' | cut -d'/' -f1 | tr '\n' ' ' | sed 's/ *$//')
 
-  # PÃºblicos
+  # PÃƒÂºblicos
   PUBLIC_IPV4=$(curl -4 -fsS https://ifconfig.co 2>/dev/null || curl -4 -fsS https://api.ipify.org 2>/dev/null || true)
   PUBLIC_IPV6=$(curl -6 -fsS https://ifconfig.co 2>/dev/null || curl -6 -fsS https://api64.ipify.org 2>/dev/null || true)
 
-  [[ -z "$PUBLIC_IPV4" ]] && log_warning "NÃ£o foi possÃ­vel detectar IPv4 pÃºblico"
-  [[ -z "$PUBLIC_IPV6" ]] && log_warning "NÃ£o foi possÃ­vel detectar IPv6 pÃºblico"
+  [[ -z "$PUBLIC_IPV4" ]] && log_warning "NÃƒÂ£o foi possÃƒÂ­vel detectar IPv4 pÃƒÂºblico"
+  [[ -z "$PUBLIC_IPV6" ]] && log_warning "NÃƒÂ£o foi possÃƒÂ­vel detectar IPv6 pÃƒÂºblico"
 
   log_info "IPv4 local(ais): ${LOCAL_IPV4S:-nenhum}"
   log_info "IPv6 local(ais): ${LOCAL_IPV6S:-nenhum}"
-  log_info "IPv4 pÃºblico: ${PUBLIC_IPV4:-desconhecido}"
-  log_info "IPv6 pÃºblico: ${PUBLIC_IPV6:-desconhecido}"
+  log_info "IPv4 pÃƒÂºblico: ${PUBLIC_IPV4:-desconhecido}"
+  log_info "IPv6 pÃƒÂºblico: ${PUBLIC_IPV6:-desconhecido}"
 }
 
 check_root() {
@@ -79,7 +79,7 @@ check_root() {
 
 check_ubuntu() {
   if ! command -v lsb_release &>/dev/null; then
-    log_error "Sistema operacional nÃ£o identificado"
+    log_error "Sistema operacional nÃƒÂ£o identificado"
     exit 1
   fi
   OS_VERSION=$(lsb_release -rs)
@@ -89,40 +89,40 @@ check_ubuntu() {
     exit 1
   fi
   if [[ $(echo "$OS_VERSION >= 20.04" | bc -l) -eq 0 ]]; then
-    log_error "Ubuntu 20.04+ Ã© necessÃ¡rio. Detectado: $OS_VERSION"
+    log_error "Ubuntu 20.04+ ÃƒÂ© necessÃƒÂ¡rio. Detectado: $OS_VERSION"
     exit 1
   fi
-  log "Sistema compatÃ­vel detectado: $OS_NAME $OS_VERSION"
+  log "Sistema compatÃƒÂ­vel detectado: $OS_NAME $OS_VERSION"
 }
 
 check_system_health() {
-  log "Verificando saÃºde do sistema..."
+  log "Verificando saÃƒÂºde do sistema..."
   local available_space=$(df / | awk 'NR==2 {print $4}')
   local required_space=10485760 # 10GB em KB
   if [[ $available_space -lt $required_space ]]; then
-    log_error "EspaÃ§o insuficiente em disco. NecessÃ¡rio: 10GB, DisponÃ­vel: $(($available_space/1024/1024))GB"
+    log_error "EspaÃƒÂ§o insuficiente em disco. NecessÃƒÂ¡rio: 10GB, DisponÃƒÂ­vel: $(($available_space/1024/1024))GB"
     exit 1
   fi
   local available_ram=$(free -m | awk 'NR==2{print $7}')
   local required_ram=1024
   if [[ $available_ram -lt $required_ram ]]; then
-    log_warning "RAM disponÃ­vel baixa: ${available_ram}MB (recomendado: 2GB+)"
+    log_warning "RAM disponÃƒÂ­vel baixa: ${available_ram}MB (recomendado: 2GB+)"
   fi
   if ! ping -c 1 8.8.8.8 &>/dev/null; then
-    log_error "Sem conexÃ£o com a internet"
+    log_error "Sem conexÃƒÂ£o com a internet"
     exit 1
   fi
   local ports=(80 443 5432 6379 8000)
   for port in "${ports[@]}"; do
     if ss -tuln 2>/dev/null | grep -q ":$port "; then
-      log_warning "Porta $port jÃ¡ estÃ¡ em uso"
+      log_warning "Porta $port jÃƒÂ¡ estÃƒÂ¡ em uso"
     fi
   done
-  log "VerificaÃ§Ã£o de saÃºde concluÃ­da"
+  log "VerificaÃƒÂ§ÃƒÂ£o de saÃƒÂºde concluÃƒÂ­da"
 }
 
 fix_repository_issues() {
-  log "Verificando e corrigindo problemas de repositÃ³rios..."
+  log "Verificando e corrigindo problemas de repositÃƒÂ³rios..."
   cp /etc/apt/sources.list /etc/apt/sources.list.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
 
   # Locks
@@ -133,11 +133,11 @@ fix_repository_issues() {
   apt autoclean
 
   if ! apt update -qq; then
-    log_warning "Problemas detectados, tentando correÃ§Ã£o..."
+    log_warning "Problemas detectados, tentando correÃƒÂ§ÃƒÂ£o..."
     apt-get clean
     apt-get update --fix-missing
     if ! apt update -qq; then
-      log_warning "Regenerando lista bÃ¡sica de repositÃ³rios..."
+      log_warning "Regenerando lista bÃƒÂ¡sica de repositÃƒÂ³rios..."
       local codename=$(lsb_release -cs)
       cat > /etc/apt/sources.list << EOF
 deb http://archive.ubuntu.com/ubuntu/ $codename main restricted universe multiverse
@@ -148,17 +148,17 @@ EOF
       apt update -qq
     fi
   fi
-  log "RepositÃ³rios verificados e corrigidos"
+  log "RepositÃƒÂ³rios verificados e corrigidos"
 }
 
 prompt_config() {
-  echo -e "${CYAN}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
-  echo -e "${CYAN}â•‘                  ConfiguraÃ§Ã£o da InstalaÃ§Ã£o                   â•‘${NC}"
-  echo -e "${CYAN}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+  echo -e "${CYAN}Ã¢â€¢â€Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢â€”${NC}"
+  echo -e "${CYAN}Ã¢â€¢â€˜                  ConfiguraÃƒÂ§ÃƒÂ£o da InstalaÃƒÂ§ÃƒÂ£o                   Ã¢â€¢â€˜${NC}"
+  echo -e "${CYAN}Ã¢â€¢Å¡Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â${NC}"
   echo ""
 
-  echo -e "${BLUE}ðŸŒ DomÃ­nio (opcional):${NC}"
-  read -p "Digite o domÃ­nio (ou deixe em branco): " input_domain
+  echo -e "${BLUE}Ã°Å¸Å’Â DomÃƒÂ­nio (opcional):${NC}"
+  read -p "Digite o domÃƒÂ­nio (ou deixe em branco): " input_domain
   if [[ -n "$input_domain" ]]; then
     DOMAIN="$input_domain"
     USE_DOMAIN=true
@@ -177,18 +177,18 @@ prompt_config() {
         SSL_EMAIL="$input_email"
         break
       else
-        echo -e "${RED}Email invÃ¡lido${NC}"
+        echo -e "${RED}Email invÃƒÂ¡lido${NC}"
       fi
     done
   fi
 
-  read -p "DiretÃ³rio de instalaÃ§Ã£o (padrÃ£o: /opt/ubuntu-server-admin): " input_dir
+  read -p "DiretÃƒÂ³rio de instalaÃƒÂ§ÃƒÂ£o (padrÃƒÂ£o: /opt/ubuntu-server-admin): " input_dir
   [[ -n "$input_dir" ]] && INSTALL_DIR="$input_dir"
 
   echo -e "${GREEN}Resumo:${NC}"
-  echo -e "${CYAN}DomÃ­nio:${NC} ${DOMAIN:-(nÃ£o configurado)}"
+  echo -e "${CYAN}DomÃƒÂ­nio:${NC} ${DOMAIN:-(nÃƒÂ£o configurado)}"
   [[ "$USE_DOMAIN" == true ]] && echo -e "${CYAN}Email SSL:${NC} $SSL_EMAIL"
-  echo -e "${CYAN}DiretÃ³rio:${NC} $INSTALL_DIR"
+  echo -e "${CYAN}DiretÃƒÂ³rio:${NC} $INSTALL_DIR"
 
   while true; do
     read -p "Continuar? (s/N): " confirm
@@ -270,22 +270,22 @@ install_certbot() {
 }
 
 create_user() {
-  log "Criando usuÃ¡rio do sistema..."
+  log "Criando usuÃƒÂ¡rio do sistema..."
   if ! id "$SERVICE_USER" &>/dev/null; then
     useradd -r -s /bin/bash -d "$INSTALL_DIR" -m "$SERVICE_USER"
   fi
-  log "UsuÃ¡rio: $SERVICE_USER"
+  log "UsuÃƒÂ¡rio: $SERVICE_USER"
 }
 
 clone_repository() {
-  log "Clonando repositÃ³rio..."
+  log "Clonando repositÃƒÂ³rio..."
   if [[ -d "$INSTALL_DIR" ]]; then
-    log_warning "DiretÃ³rio existe. Backup..."
+    log_warning "DiretÃƒÂ³rio existe. Backup..."
     mv "$INSTALL_DIR" "${INSTALL_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
   fi
   git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"
   chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-  log "RepositÃ³rio clonado em $INSTALL_DIR"
+  log "RepositÃƒÂ³rio clonado em $INSTALL_DIR"
 }
 
 setup_backend() {
@@ -337,10 +337,10 @@ setup_frontend() {
   export CI=true
 
   cd "$INSTALL_DIR/frontend/ubuntu-server-admin"
-  log_info "Instalando dependÃªncias do Node..."
+  log_info "Instalando dependÃƒÂªncias do Node..."
   sudo -u "$SERVICE_USER" npm install
 
-  # Ambiente de produÃ§Ã£o
+  # Ambiente de produÃƒÂ§ÃƒÂ£o
   log_info "Escrevendo environment.prod.ts..."
   sudo -u "$SERVICE_USER" bash -c "cat > src/environments/environment.prod.ts" << EOF
 export const environment = {
@@ -361,16 +361,16 @@ EOF
   log_info "Limpando cache do Angular..."
   sudo -u "$SERVICE_USER" npx ng cache clean 2>/dev/null || true
 
-  log_info "Compilando Angular (produÃ§Ã£o, nÃ£o-interativo)..."
+  log_info "Compilando Angular (produÃƒÂ§ÃƒÂ£o, nÃƒÂ£o-interativo)..."
   if sudo -u "$SERVICE_USER" npx ng build --configuration production ; then
-    log "Build concluÃ­do"
+    log "Build concluÃƒÂ­do"
   else
-    log_warning "Build otimizado falhou. Tentando build bÃ¡sico..."
+    log_warning "Build otimizado falhou. Tentando build bÃƒÂ¡sico..."
     sudo -u "$SERVICE_USER" npx ng build --aot=false --optimization=false 
-    log_warning "Build bÃ¡sico concluÃ­do"
+    log_warning "Build bÃƒÂ¡sico concluÃƒÂ­do"
   fi
 
-  # InstalaÃ§Ã£o no NGINX
+  # InstalaÃƒÂ§ÃƒÂ£o no NGINX
   log_info "Instalando arquivos no NGINX..."
   rm -rf /var/www/html/serveradmin
   mkdir -p /var/www/html/serveradmin/browser
@@ -385,13 +385,13 @@ EOF
   if [[ -f "/var/www/html/serveradmin/browser/index.html" ]]; then
     log "Frontend instalado"
   else
-    log_error "Arquivos do frontend nÃ£o encontrados no destino"
+    log_error "Arquivos do frontend nÃƒÂ£o encontrados no destino"
     exit 1
   fi
 }
 
 create_systemd_service() {
-  log "Criando serviÃ§o systemd..."
+  log "Criando serviÃƒÂ§o systemd..."
   cat > /etc/systemd/system/ubuntu-server-admin.service << EOF
 [Unit]
 Description=Ubuntu Server Admin API
@@ -415,7 +415,7 @@ WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
   systemctl enable ubuntu-server-admin
-  log "ServiÃ§o criado"
+  log "ServiÃƒÂ§o criado"
 }
 
 configure_nginx() {
@@ -479,10 +479,10 @@ setup_ssl() {
       HTTPS_ENABLED=true
       log "SSL configurado para $DOMAIN"
     else
-      log_warning "Falha ao obter certificado SSL. VocÃª pode tentar depois com: certbot --nginx -d $DOMAIN"
+      log_warning "Falha ao obter certificado SSL. VocÃƒÂª pode tentar depois com: certbot --nginx -d $DOMAIN"
     fi
   else
-    log_warning "SSL pulado: domÃ­nio nÃ£o informado"
+    log_warning "SSL pulado: domÃƒÂ­nio nÃƒÂ£o informado"
   fi
 }
 
@@ -501,14 +501,14 @@ configure_firewall() {
 }
 
 start_services() {
-  log "Iniciando serviÃ§os..."
+  log "Iniciando serviÃƒÂ§os..."
   systemctl start ubuntu-server-admin
   systemctl status ubuntu-server-admin --no-pager || true
-  log "ServiÃ§os iniciados"
+  log "ServiÃƒÂ§os iniciados"
 }
 
 create_admin_script() {
-  log "Criando utilitÃ¡rio serveradmin..."
+  log "Criando utilitÃƒÂ¡rio serveradmin..."
   cat > /usr/local/bin/serveradmin << 'EOF'
 #!/usr/bin/env bash
 set -e
@@ -528,7 +528,7 @@ case "$1" in
       https_url=$(echo "$current_url" | sed -E 's#git@github.com:#https://github.com/#')
       git remote set-url origin "$https_url"
     fi
-    echo "Atualizando cÃ³digo..."
+    echo "Atualizando cÃƒÂ³digo..."
     git pull
     echo "Atualizando backend..."
     cd backend
@@ -538,9 +538,9 @@ case "$1" in
     sudo -u serveradmin npm install
     echo "Compilando frontend..."
     if sudo -u serveradmin npx ng build --configuration production ; then
-      echo "âœ… Build concluÃ­do"
+      echo "Ã¢Å“â€¦ Build concluÃƒÂ­do"
     else
-      echo "âš ï¸ Build otimizado falhou, tentando bÃ¡sico..."
+      echo "Ã¢Å¡Â Ã¯Â¸Â Build otimizado falhou, tentando bÃƒÂ¡sico..."
       sudo -u serveradmin npx ng build --aot=false --optimization=false 
     fi
     if [[ -d dist/ubuntu-server-admin/browser ]]; then
@@ -548,17 +548,17 @@ case "$1" in
       mkdir -p /var/www/html/serveradmin/browser
       cp -r dist/ubuntu-server-admin/browser/* /var/www/html/serveradmin/browser/
       chown -R www-data:www-data /var/www/html/serveradmin
-      echo "âœ… Frontend atualizado"
+      echo "Ã¢Å“â€¦ Frontend atualizado"
     else
-      echo "âŒ Arquivos de build nÃ£o encontrados"; exit 1
+      echo "Ã¢ÂÅ’ Arquivos de build nÃƒÂ£o encontrados"; exit 1
     fi
     systemctl restart ubuntu-server-admin
     systemctl reload nginx
-    echo "âœ… AtualizaÃ§Ã£o concluÃ­da"
+    echo "Ã¢Å“â€¦ AtualizaÃƒÂ§ÃƒÂ£o concluÃƒÂ­da"
     ;;
   health)
     for s in ubuntu-server-admin postgresql redis-server nginx; do
-      systemctl is-active --quiet "$s" && echo "âœ… $s: Ativo" || echo "âŒ $s: Inativo"
+      systemctl is-active --quiet "$s" && echo "Ã¢Å“â€¦ $s: Ativo" || echo "Ã¢ÂÅ’ $s: Inativo"
     done
     ;;
   test)
@@ -571,18 +571,18 @@ case "$1" in
 esac
 EOF
   chmod +x /usr/local/bin/serveradmin
-  log "UtilitÃ¡rio criado em /usr/local/bin/serveradmin"
+  log "UtilitÃƒÂ¡rio criado em /usr/local/bin/serveradmin"
 }
 
 show_summary() {
   echo ""
-  echo -e "${GREEN}INSTALAÃ‡ÃƒO CONCLUÃDA${NC}"
-  echo "DiretÃ³rio: $INSTALL_DIR"
-  echo "UsuÃ¡rio:   $SERVICE_USER"
+  echo -e "${GREEN}INSTALAÃƒâ€¡ÃƒÆ’O CONCLUÃƒÂDA${NC}"
+  echo "DiretÃƒÂ³rio: $INSTALL_DIR"
+  echo "UsuÃƒÂ¡rio:   $SERVICE_USER"
   echo "Banco:     $DB_NAME"
   echo "NGINX:     /etc/nginx/sites-available/$NGINX_SITE"
-  [[ -n "$PUBLIC_IPV4" ]] && echo "IPv4 pÃºblico: http://$PUBLIC_IPV4"
-  [[ -n "$PUBLIC_IPV6" ]] && echo "IPv6 pÃºblico: http://[$PUBLIC_IPV6]"
+  [[ -n "$PUBLIC_IPV4" ]] && echo "IPv4 pÃƒÂºblico: http://$PUBLIC_IPV4"
+  [[ -n "$PUBLIC_IPV6" ]] && echo "IPv6 pÃƒÂºblico: http://[$PUBLIC_IPV6]"
   if [[ "$USE_DOMAIN" == true ]]; then
     echo "Frontend:  http${HTTPS_ENABLED:+s}://$DOMAIN"
     echo "API:       http${HTTPS_ENABLED:+s}://$DOMAIN/api"
@@ -601,22 +601,22 @@ parse_arguments() {
       --skip-ssl) SKIP_SSL=true; shift;;
       --auto) AUTO_INSTALL=true; shift;;
       --help|-h) show_help; exit 0;;
-      *) echo -e "${RED}ParÃ¢metro desconhecido: $1${NC}"; show_help; exit 1;;
+      *) echo -e "${RED}ParÃƒÂ¢metro desconhecido: $1${NC}"; show_help; exit 1;;
     esac
   done
 }
 
 show_help() {
-  echo -e "${BLUE}Ubuntu Server Admin - Script de InstalaÃ§Ã£o${NC}"
-  echo "Uso: sudo bash install.sh [--domain DOMÃNIO] [--email EMAIL] [--directory DIR] [--skip-ssl] [--auto]"
+  echo -e "${BLUE}Ubuntu Server Admin - Script de InstalaÃƒÂ§ÃƒÂ£o${NC}"
+  echo "Uso: sudo bash install.sh [--domain DOMÃƒÂNIO] [--email EMAIL] [--directory DIR] [--skip-ssl] [--auto]"
 }
 
 main() {
   clear
-  echo -e "${PURPLE}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
-  echo -e "${PURPLE}â•‘                    Ubuntu Server Admin                          â•‘${NC}"
-  echo -e "${PURPLE}â•‘                     Script de InstalaÃ§Ã£o                        â•‘${NC}"
-  echo -e "${PURPLE}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+  echo -e "${PURPLE}Ã¢â€¢â€Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢â€”${NC}"
+  echo -e "${PURPLE}Ã¢â€¢â€˜                    Ubuntu Server Admin                          Ã¢â€¢â€˜${NC}"
+  echo -e "${PURPLE}Ã¢â€¢â€˜                     Script de InstalaÃƒÂ§ÃƒÂ£o                        Ã¢â€¢â€˜${NC}"
+  echo -e "${PURPLE}Ã¢â€¢Å¡Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â${NC}"
   echo ""
 
   parse_arguments "$@"
@@ -628,10 +628,10 @@ main() {
   if [[ "$AUTO_INSTALL" != true ]]; then
     prompt_config
   else
-    log "Modo automÃ¡tico ativado"
+    log "Modo automÃƒÂ¡tico ativado"
   fi
 
-  log "Iniciando instalaÃ§Ã£o..."
+  log "Iniciando instalaÃƒÂ§ÃƒÂ£o..."
   fix_repository_issues
   update_system
   install_python
@@ -652,7 +652,7 @@ main() {
   if [[ "$SKIP_SSL" != true ]]; then
     setup_ssl
   else
-    log_warning "ConfiguraÃ§Ã£o SSL pulada"
+    log_warning "ConfiguraÃƒÂ§ÃƒÂ£o SSL pulada"
   fi
 
   configure_firewall
