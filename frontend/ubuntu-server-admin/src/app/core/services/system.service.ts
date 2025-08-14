@@ -102,6 +102,7 @@ export interface SystemInfo {
   load_average?: any;
   kernel_version?: string;
   architecture?: string;
+  boot_time?: string; // ISO/string da data/hora de boot
 }
 
 @Injectable({ providedIn: 'root' })
