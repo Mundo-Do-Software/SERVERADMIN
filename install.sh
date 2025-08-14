@@ -9,72 +9,7 @@
 # Requisitos:
 # - Ubuntu 20.04+ (testado em 20.04, 22.04, 24.04)
 # - Usuário com privilégios sudo
-# - Conexão com internet
-# - Mínimo 2GB RAM, 10GB espaço livre
-#
-# Uso: sudo bash install.sh
-# ==============================================================================
-
-set -e  # Parar em caso de erro
-
-# Cores para output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
-# Configurações
-PROJECT_NAME="ubuntu-server-admin"
-INSTALL_DIR="/opt/ubuntu-server-admin"
-SERVICE_USER="serveradmin"
-DB_NAME="serveradmin"
-DB_USER="serveradmin"
-NGINX_SITE="serveradmin"
-DOMAIN=""
-SSL_EMAIL=""
-USE_DOMAIN=false
-HTTPS_ENABLED=false
-
-# Flags de controle
-SKIP_SSL=false
-AUTO_INSTALL=false
-
-# Logs
-LOG_FILE="/var/log/ubuntu-server-admin-install.log"
-
-# ==============================================================================
-# Funções auxiliares
-# ==============================================================================
-
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR] $1${NC}" >&2
-    echo "[ERROR] $1" >> "$LOG_FILE"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING] $1${NC}"
-    echo "[WARNING] $1" >> "$LOG_FILE"
-}
-
-log_info() {
-    echo -e "${BLUE}[INFO] $1${NC}"
-    echo "[INFO] $1" >> "$LOG_FILE"
-}
-
-# Detecção de IPs (locais e públicos)
-detect_ips() {
-    log "Detectando endereços IPv4/IPv6 locais e públicos..."
-
-    # Locais (globais) IPv4
-    LOCAL_IPV4S=$(ip -4 addr show scope global 2>/dev/null | awk '/inet /{print $2}' | cut -d'/' -f1 | tr '\n' ' ' | sed 's/ *$//')
+## SSH removido: repositório público usa HTTPS. Nenhuma configuração SSH necessária.
     # Locais (globais) IPv6
     LOCAL_IPV6S=$(ip -6 addr show scope global 2>/dev/null | awk '/inet6 /{print $2}' | cut -d'/' -f1 | tr '\n' ' ' | sed 's/ *$//')
 
@@ -214,72 +149,7 @@ EOF
     log "Repositórios verificados e corrigidos"
 }
 
-setup_ssh_for_git() {
-    log "Configurando SSH para Git (se necessário)..."
-    
-    # Verificar se já existe chave SSH
-    if [[ ! -f ~/.ssh/id_ed25519 && ! -f ~/.ssh/id_rsa ]]; then
-        log_info "Gerando chave SSH para Git..."
-        
-        # Criar diretório SSH se não existir
-        mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        
-        # Gerar chave SSH
-        ssh-keygen -t ed25519 -C "serveradmin@$(hostname)" -f ~/.ssh/id_ed25519 -N "" 2>/dev/null
-        
-        # Configurar permissões
-        chmod 600 ~/.ssh/id_ed25519
-        chmod 644 ~/.ssh/id_ed25519.pub
-        
-        # Adicionar ao ssh-agent
-        eval "$(ssh-agent -s)" 2>/dev/null
-        ssh-add ~/.ssh/id_ed25519 2>/dev/null
-        
-        # Configurar SSH para GitHub
-        cat >> ~/.ssh/config << EOF
-
-# GitHub configuration
-Host github.com
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/id_ed25519
-    IdentitiesOnly yes
-    StrictHostKeyChecking no
-EOF
-        chmod 600 ~/.ssh/config
-        
-        log_warning "Chave SSH gerada: ~/.ssh/id_ed25519.pub"
-        log_warning "Adicione esta chave ao GitHub antes de continuar:"
-        echo ""
-        echo -e "${CYAN}======== CHAVE SSH PÚBLICA ========${NC}"
-        cat ~/.ssh/id_ed25519.pub
-        echo -e "${CYAN}=====================================${NC}"
-        echo ""
-        log_warning "1. Copie a chave acima"
-        log_warning "2. Acesse: https://github.com/settings/ssh/new"
-        log_warning "3. Cole a chave e salve"
-        echo ""
-        
-        while true; do
-            read -p "Chave SSH adicionada ao GitHub? (s/N): " ssh_added
-            case "$ssh_added" in
-                [Ss]|[Ss][Ii][Mm]|[Yy]|[Yy][Ee][Ss])
-                    break
-                    ;;
-                [Nn]|[Nn][Aa][Oo]|[Nn][Oo]|"")
-                    log_warning "Clone continuará via HTTPS (pode solicitar credenciais)"
-                    break
-                    ;;
-                *)
-                    echo -e "${RED}Por favor, digite 's' para sim ou 'n' para não${NC}"
-                    ;;
-            esac
-        done
-    else
-        log "Chave SSH já existe"
-    fi
-}
+## SSH removido: repositório público usa HTTPS. Nenhuma configuração SSH necessária.
 
 generate_password() {
     openssl rand -base64 32
@@ -611,34 +481,12 @@ clone_repository() {
         mv "$INSTALL_DIR" "${INSTALL_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
     fi
     
-    # Verificar se SSH está configurado
-    log_info "Verificando configuração SSH..."
-    if ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
-        log_info "SSH configurado corretamente, clonando via SSH..."
-        if git clone git@github.com:Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR" 2>/dev/null; then
-            log "Repositório clonado via SSH"
-        else
-            log_warning "Clone via SSH falhou mesmo com autenticação, tentando HTTPS..."
-            if git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"; then
-                log "Repositório clonado via HTTPS"
-                log_warning "Para futuras atualizações, configure SSH corretamente"
-            else
-                log_error "Falha ao clonar repositório"
-                exit 1
-            fi
-        fi
+    # Repositório público: sempre usar HTTPS
+    if git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"; then
+        log "Repositório clonado via HTTPS"
     else
-        log_warning "SSH não configurado ou não funcionando, usando HTTPS..."
-        if git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"; then
-            log "Repositório clonado via HTTPS"
-            log_warning "Para evitar solicitar credenciais no futuro, configure SSH:"
-            log_warning "  1. ssh-keygen -t ed25519 -C 'your-email@domain.com'"
-            log_warning "  2. cat ~/.ssh/id_ed25519.pub  # Adicione ao GitHub"
-            log_warning "  3. ssh -T git@github.com  # Teste a conexão"
-        else
-            log_error "Falha ao clonar repositório"
-            exit 1
-        fi
+        log_error "Falha ao clonar repositório"
+        exit 1
     fi
     
     chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
@@ -1051,14 +899,15 @@ case "$1" in
         ;;
     update)
         cd /opt/ubuntu-server-admin
-        
-        # Verificar se o repositório está configurado para SSH
-        current_url=$(git remote get-url origin)
-        if [[ "$current_url" == "https://github.com/"* ]]; then
-            echo "Mudando repositório para SSH..."
-            git remote set-url origin git@github.com:Mundo-Do-Software/SERVERADMIN.git
+        # Garantir remoto HTTPS (repositório público)
+        current_url=$(git remote get-url origin 2>/dev/null || echo "")
+        if [[ -z "$current_url" ]]; then
+            git remote add origin https://github.com/Mundo-Do-Software/SERVERADMIN.git || true
+        elif [[ "$current_url" =~ ^git@github.com: ]]; then
+            https_url=$(echo "$current_url" | sed -E 's#git@github.com:#https://github.com/#')
+            git remote set-url origin "$https_url"
         fi
-        
+
         echo "Atualizando código..."
         git pull
         
@@ -1408,11 +1257,6 @@ main() {
     
     # Configuração da aplicação
     create_user
-    
-    # Configurar SSH se necessário (apenas em modo interativo)
-    if [[ "$AUTO_INSTALL" != true ]]; then
-        setup_ssh_for_git
-    fi
     
     clone_repository
     setup_backend

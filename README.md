@@ -70,37 +70,12 @@ Uma solução completa para administração de servidores Ubuntu com interface w
 - Git
 - 4GB RAM mínimo
 
-### 📥 Instalação sem Docker (Recomendada para Produção)
+### � Instalação sem Docker (Recomendada para Produção)
 
-#### 🔑 Repositório Privado - Instalação via SSH
-
-Como este é um repositório privado, você precisará configurar acesso SSH:
+O repositório é público. Use HTTPS para clonar e instalar:
 
 ```bash
-# 1. Gerar chave SSH (se não tiver)
-ssh-keygen -t ed25519 -C "seu-email@dominio.com"
-
-# 2. Adicionar chave pública ao GitHub
-cat ~/.ssh/id_ed25519.pub
-# Copie e adicione em: https://github.com/settings/ssh/new
-
-# 3. Testar conexão SSH
-ssh -T git@github.com
-
-# 4. Clonar repositório via SSH
-git clone git@github.com:Mundo-Do-Software/SERVERADMIN.git
-cd SERVERADMIN
-
-# 5. Executar instalação
-sudo bash install.sh
-```
-
-#### 🌐 Instalação Alternativa (HTTPS)
-
-Se preferir usar HTTPS (solicitará credenciais):
-
-```bash
-# Clone via HTTPS
+# Clonar via HTTPS
 git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git
 cd SERVERADMIN
 

@@ -104,8 +104,8 @@ setup_application() {
     rm -f /var/log/nginx/serveradmin.*
 
     log "Configurando aplicação..."
-    # Clonar repositório usando SSH (chave já configurada)
-    git clone git@github.com:Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"
+    # Repositório público: clonar via HTTPS
+    git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"
     chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
 
     # Configurar backend
