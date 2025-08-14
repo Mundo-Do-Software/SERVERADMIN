@@ -8,11 +8,14 @@ import { AuthService } from './auth.service';
 export interface GpuInfo {
   type: string;
   name: string;
+  bus_id?: string;
   memory_total?: number | null;
   memory_used?: number | null;
   memory_free?: number | null;
   temperature?: number | null;
   utilization?: number | null;
+  driver_version?: string | null;
+  cuda_version?: string | null;
 }
 
 export interface CpuInfo {
@@ -66,6 +69,15 @@ export interface SystemInfo {
   cpu?: CpuInfo;
   memory?: MemoryInfo;
   disk?: DiskInfo;
+  temperatures?: Temperatures;
+}
+
+export interface Temperatures {
+  cpu?: number | null;
+  cpu_package?: number | null;
+  cpu_core_max?: number | null;
+  nvme: Array<{ label?: string | null; temp: number | null }>;
+  gpus: Array<{ name?: string; temperature?: number | null }>;
 }
 
 export interface ProcessInfo {

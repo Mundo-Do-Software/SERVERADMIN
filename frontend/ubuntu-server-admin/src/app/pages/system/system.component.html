@@ -48,9 +48,9 @@
             <label>Uptime:</label>
             <span>{{ systemInfo.uptime }}</span>
           </div>
-          <div class="info-item" *ngIf="systemInfo.temperature">
+          <div class="info-item" *ngIf="systemInfo.temperatures?.cpu || systemInfo.temperature">
             <label>Temperatura:</label>
-            <span>{{ systemInfo.temperature }}°C</span>
+            <span>{{ (systemInfo.temperatures?.cpu || systemInfo.temperature) }}°C</span>
           </div>
         </div>
       </div>
