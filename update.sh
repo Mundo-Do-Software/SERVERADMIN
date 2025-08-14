@@ -63,6 +63,78 @@ ensure_github_known_host() {
     as_service_user "ssh-keygen -F github.com >/dev/null 2>&1 || ssh-keyscan -H -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null || true"
 }
 
+# Configura SSH do SERVICE_USER e orienta a adicionar a chave no GitHub (similar ao install.sh)
+setup_ssh_for_git_update() {
+    log "Configurando SSH para Git (usuário: $SERVICE_USER)..."
+    as_service_user "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
+    # Gera chave se não existir
+    if ! as_service_user "test -f ~/.ssh/id_ed25519"; then
+        as_service_user "ssh-keygen -t ed25519 -C 'serveradmin@$(hostname)' -f ~/.ssh/id_ed25519 -N '' >/dev/null 2>&1"
+        as_service_user "chmod 600 ~/.ssh/id_ed25519 && chmod 644 ~/.ssh/id_ed25519.pub"
+    fi
+    # Escreve config mínima
+    as_service_user "grep -q 'Host github.com' ~/.ssh/config 2>/dev/null || printf '\nHost github.com\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_ed25519\n  IdentitiesOnly yes\n  StrictHostKeyChecking accept-new\n' >> ~/.ssh/config"
+    as_service_user "chmod 600 ~/.ssh/config 2>/dev/null || true"
+    ensure_github_known_host
+
+    echo ""
+    echo -e "${YELLOW}Adicione esta chave SSH do usuário ${SERVICE_USER} no GitHub:${NC}"
+    echo -e "${CYAN}======== CHAVE SSH PÚBLICA ========${NC}"
+    as_service_user "cat ~/.ssh/id_ed25519.pub || true"
+    echo -e "${CYAN}===================================${NC}"
+    echo ""
+    echo -e "${BLUE}URL:${NC} https://github.com/settings/ssh/new"
+    echo ""
+    while true; do
+        read -p "Chave SSH adicionada ao GitHub? (s/N): " ssh_added
+        case "$ssh_added" in
+            [Ss]|[Ss][Ii][Mm]|[Yy]|[Yy][Ee][Ss])
+                break
+                ;;
+            [Nn]|[Nn][Aa][Oo]|[Nn][Oo]|"")
+                log_warning "Sem chave SSH autorizada, operações Git via SSH irão falhar."
+                break
+                ;;
+            *)
+                echo -e "${RED}Por favor, digite 's' para sim ou 'n' para não${NC}"
+                ;;
+        esac
+    done
+}
+
+# Verifica acesso ao remoto GitHub (SSH). Se falhar, tenta configurar SSH e solicita confirmação.
+ensure_git_access() {
+    ensure_github_known_host
+    # Testa acesso ao remoto atual (usa ls-remote para não alterar estado)
+    if as_service_user "cd '$INSTALL_DIR' && GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git ls-remote origin -h >/dev/null 2>&1"; then
+        return 0
+    fi
+    log_warning "Falha no acesso SSH ao repositório (Permission denied). Vamos configurar a chave SSH."
+    setup_ssh_for_git_update
+    # Retestar
+    if ! as_service_user "cd '$INSTALL_DIR' && GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git ls-remote origin -h >/dev/null 2>&1"; then
+        log_warning "Ainda sem acesso ao GitHub via SSH para o usuário $SERVICE_USER. Se o repositório for público, podemos alternar para HTTPS temporariamente."
+        # Alternativa: tentar HTTPS se remoto atual é SSH e repositório for público
+        local remote_url
+        remote_url=$(as_service_user "cd '$INSTALL_DIR' && git remote get-url origin" 2>/dev/null || true)
+        if [[ "$remote_url" == git@github.com:* ]]; then
+            local https_url
+            https_url=$(echo "$remote_url" | sed -E 's#git@github.com:#https://github.com/#')
+            log_warning "Tentando usar HTTPS: $https_url"
+            if as_service_user "cd '$INSTALL_DIR' && git remote set-url origin '$https_url' && git ls-remote origin -h >/dev/null 2>&1"; then
+                log "Acesso via HTTPS funcionando. Prosseguindo com update pelo HTTPS."
+                echo ""
+            else
+                log_error "Sem acesso ao repositório. Adicione a chave SSH ao GitHub e tente novamente."
+                exit 1
+            fi
+        else
+            log_error "Sem acesso ao repositório. Adicione a chave SSH ao GitHub e tente novamente."
+            exit 1
+        fi
+    fi
+}
+
 detect_web_root() {
     # Detecta o root atual do NGINX para o site serveradmin
     local site_conf=""
@@ -139,6 +211,9 @@ update_code() {
     
     cd "$INSTALL_DIR"
     
+    # Garantir acesso ao remoto antes das operações
+    ensure_git_access
+
     # Verificar se há mudanças locais (como o usuário do serviço)
     if ! as_service_user "cd '$INSTALL_DIR' && git diff-index --quiet HEAD --"; then
         log_warning "Há mudanças locais não commitadas. Fazendo stash..."
