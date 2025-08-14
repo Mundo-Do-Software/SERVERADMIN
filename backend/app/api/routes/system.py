@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import psutil
 import platform
 import subprocess
@@ -18,6 +18,7 @@ import threading
 import uuid
 import threading
 import uuid
+from pathlib import Path
 
 router = APIRouter()
 def _which_nvidia_smi() -> Optional[str]:
@@ -938,4 +939,109 @@ async def cancel_benchmark(job_id: str, current_user: str = Depends(verify_token
         if job_id not in JOBS:
             raise HTTPException(status_code=404, detail="Job não encontrado")
         JOBS[job_id]["cancel"] = True
+
+
+# =======================
+# Versão e Atualização do Sistema
+# =======================
+
+def _repo_root() -> Path:
+    """Detecta a raiz do repositório com base na localização deste arquivo.
+    backend/app/api/routes/system.py -> backend/app/api/routes -> ... -> <repo>/backend
+    Subir 2 níveis para backend e mais 1 para raiz do repo.
+    """
+    p = Path(__file__).resolve()
+    # __file__ = backend/app/api/routes/system.py
+    return p.parents[3]
+
+
+def _run_git(args: List[str], cwd: Optional[Path] = None, timeout: int = 10) -> Tuple[int, str, str]:
+    cwd = cwd or _repo_root()
+    try:
+        proc = subprocess.run(["git"] + args, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
+        return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+    except Exception as e:
+        return 1, "", str(e)
+
+
+def _git_version_info() -> Dict[str, Any]:
+    root = _repo_root()
+    info: Dict[str, Any] = {"repo": str(root)}
+    rc, cur, _ = _run_git(["rev-parse", "--short", "HEAD"], root)
+    info["current_commit"] = cur if rc == 0 else None
+    rc, date, _ = _run_git(["log", "-1", "--format=%cd", "--date=iso"], root)
+    info["current_date"] = date if rc == 0 else None
+    rc, branch, _ = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], root)
+    info["branch"] = branch if rc == 0 else "main"
+    rc, tagdesc, _ = _run_git(["describe", "--tags", "--always"], root)
+    info["describe"] = tagdesc if rc == 0 else None
+    rc, url, _ = _run_git(["remote", "get-url", "origin"], root)
+    info["remote_url"] = url if rc == 0 else None
+    # fetch remoto (rápido)
+    _run_git(["fetch", "--quiet", "origin"], root)
+    # ahead/behind
+    rc, ab, _ = _run_git(["rev-list", "--left-right", "--count", "HEAD...origin/main"], root)
+    if rc == 0 and ab:
+        try:
+            ahead_str, behind_str = ab.split()
+            info["ahead"] = int(ahead_str)
+            info["behind"] = int(behind_str)
+        except Exception:
+            info["ahead"] = None
+            info["behind"] = None
+    else:
+        info["ahead"], info["behind"] = None, None
+    info["update_available"] = (info.get("behind") or 0) > 0
+    # últimas mudanças
+    rc, log_out, _ = _run_git(["log", "--oneline", "-n", "10", "HEAD..origin/main"], root)
+    info["changelog"] = log_out.splitlines() if rc == 0 and log_out else []
+    return info
+
+
+@router.get("/version", response_model=Dict[str, Any])
+async def get_version_info(current_user: str = Depends(verify_token)):
+    try:
+        return _git_version_info()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao obter versão: {str(e)}")
+
+
+@router.post("/update/start", response_model=Dict[str, Any])
+async def start_update_background(current_user: str = Depends(verify_token)):
+    """Inicia atualização em background via sudo + nohup do script update.sh.
+    Requer que o usuário do serviço tenha NOPASSWD para executar o update.
+    """
+    try:
+        root = _repo_root()
+        update_script = root / "update.sh"
+        log_path = root / "update.log"
+        if not update_script.exists():
+            raise HTTPException(status_code=404, detail=f"Script de atualização não encontrado em {update_script}")
+
+        # Tenta executar de forma não interativa como root
+        cmd = [
+            "sudo", "-n", "bash", "-lc",
+            f"nohup '{str(update_script)}' > '{str(log_path)}' 2>&1 & echo $!"
+        ]
+        proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True, timeout=5)
+        if proc.returncode != 0:
+            msg = proc.stderr.strip() or proc.stdout.strip() or "Falha ao iniciar atualização"
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Não foi possível iniciar a atualização automaticamente. "
+                    "Configure sudoers (NOPASSWD) para executar update.sh ou rode manualmente. "
+                    f"Detalhes: {msg}"
+                ),
+            )
+        pid_str = (proc.stdout or "").strip()
+        try:
+            pid = int(pid_str)
+        except Exception:
+            pid = None
+        return {"started": True, "pid": pid, "log": str(log_path)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao iniciar atualização: {str(e)}")
         return {"message": "Cancelamento solicitado"}

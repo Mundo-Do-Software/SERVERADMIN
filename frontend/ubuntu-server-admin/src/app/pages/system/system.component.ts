@@ -1,168 +1,202 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, JsonPipe, DecimalPipe, SlicePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { SystemService, SystemInfo, ProcessInfo, DiskInfo, BenchmarkRequest, BenchmarkResult, BenchmarkJobStatus } from '../../core/services/system.service';
 import { interval, Subscription } from 'rxjs';
 import { startWith, switchMap } from 'rxjs/operators';
+import {
+  SystemService,
+  SystemInfo,
+  ProcessInfo,
+  DiskInfo,
+  VersionInfo,
+  UpdateStartResponse,
+  BenchmarkRequest,
+  BenchmarkJobStatus,
+  BenchmarkResult
+} from '../../core/services/system.service';
 
 @Component({
   selector: 'app-system',
-  imports: [CommonModule, FormsModule],
+  standalone: true,
+  imports: [CommonModule, FormsModule, JsonPipe, DecimalPipe, SlicePipe],
   templateUrl: './system.component.html',
-  styleUrl: './system.component.scss'
+  styleUrls: ['./system.component.scss']
 })
 export class SystemComponent implements OnInit, OnDestroy {
-  systemInfo: SystemInfo | null = null;
+  // Estado básico
+  isLoading = false;
+  error: string | null = null;
+
+  systemInfo?: SystemInfo;
   processes: ProcessInfo[] = [];
   disks: DiskInfo[] = [];
-  isLoading = true;
-  error: string | null = null;
-  // Benchmark state
+
+  // Auto refresh
+  private refreshSubscription?: Subscription;
+
+  // Versão/Update
+  versionInfo?: VersionInfo;
+  versionLoading = false;
+  updateLoading = false;
+  updateInProgress = false;
+  updateMessage = '';
+  private versionPoll?: any;
+
+  // Benchmark UI
   benchType: 'cpu' | 'disk' | 'memory' | 'gpu' = 'cpu';
   benchDuration = 10;
   benchSizeMb = 256;
-  benchThreads: number | null = null;
+  benchThreads?: number;
   benchRunning = false;
-  benchResult: BenchmarkResult | null = null;
   benchProgress = 0;
-  
-  private refreshSubscription: Subscription | null = null;
-  private benchPollSub: Subscription | null = null;
+  benchResult: BenchmarkResult | null = null;
+  private benchPollSub?: Subscription;
+
+  // Compat com template
+  get updateStarting(): boolean { return this.updateLoading || this.updateInProgress; }
+  startUpdate(): void { this.startBackgroundUpdate(); }
 
   constructor(private systemService: SystemService) { }
 
   ngOnInit(): void {
-    this.loadSystemData();
-    
-    // Auto-refresh every 30 seconds
-    this.refreshSubscription = interval(30000).pipe(
-      startWith(0),
-      switchMap(() => this.systemService.getSystemInfo())
-    ).subscribe({
-      next: (data) => {
-        this.systemInfo = data;
-        this.error = null;
-      },
-      error: (error) => {
-        console.error('Error loading system info:', error);
-        this.error = error.message;
-      }
-    });
+    this.startAutoRefresh();
+    this.loadVersionInfo();
   }
 
   ngOnDestroy(): void {
-    if (this.refreshSubscription) {
-      this.refreshSubscription.unsubscribe();
-    }
-    if (this.benchPollSub) {
-      this.benchPollSub.unsubscribe();
-    }
+    this.refreshSubscription?.unsubscribe();
+    this.benchPollSub?.unsubscribe();
+    if (this.versionPoll) { clearInterval(this.versionPoll); this.versionPoll = undefined; }
   }
 
-  loadSystemData(): void {
-    this.isLoading = true;
-    this.error = null;
-
-    // Load system info
-    this.systemService.getSystemInfo().subscribe({
-      next: (data) => {
+  startAutoRefresh(): void {
+    this.refreshSubscription = interval(2000).pipe(
+      startWith(0),
+      switchMap(() => {
+        this.isLoading = true;
+        return this.systemService.getSystemInfo();
+      })
+    ).subscribe({
+      next: (data: SystemInfo) => {
         this.systemInfo = data;
         this.isLoading = false;
+        // opcional: carregar processos/discos em paralelo
+        this.systemService.getProcesses().subscribe({
+          next: (ps: ProcessInfo[]) => this.processes = ps,
+          error: () => { }
+        });
+        this.systemService.getDiskUsage().subscribe({
+          next: (ds: DiskInfo[]) => this.disks = ds,
+          error: () => { }
+        });
       },
-      error: (error) => {
-        console.error('Error loading system info:', error);
-        this.error = error.message;
+      error: (err: any) => {
+        this.error = err?.message || 'Falha ao carregar informações.';
         this.isLoading = false;
-      }
-    });
-
-    // Load processes
-    this.systemService.getProcesses().subscribe({
-      next: (data) => {
-        this.processes = data.slice(0, 10); // Top 10 processes
-      },
-      error: (error) => {
-        console.error('Error loading processes:', error);
-      }
-    });
-
-    // Load disk info
-    this.systemService.getDiskUsage().subscribe({
-      next: (data) => {
-        this.disks = data;
-      },
-      error: (error) => {
-        console.error('Error loading disk info:', error);
       }
     });
   }
 
   refreshData(): void {
-    this.loadSystemData();
+    this.systemService.getSystemInfo().subscribe({
+      next: (data: SystemInfo) => { this.systemInfo = data; },
+      error: () => { }
+    });
+    this.systemService.getProcesses().subscribe({
+      next: (ps: ProcessInfo[]) => this.processes = ps,
+      error: () => { }
+    });
+    this.systemService.getDiskUsage().subscribe({
+      next: (ds: DiskInfo[]) => this.disks = ds,
+      error: () => { }
+    });
   }
 
-  getStatusClass(usage: number): string {
-    if (usage >= 90) return 'danger';
-    if (usage >= 70) return 'warning';
-    return 'success';
+  // Versão/Atualização
+  loadVersionInfo(): void {
+    this.versionLoading = true;
+    this.systemService.getVersionInfo().subscribe({
+      next: (info: VersionInfo) => { this.versionInfo = info; this.versionLoading = false; },
+      error: () => { this.versionLoading = false; }
+    });
   }
 
-  formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  startBackgroundUpdate(): void {
+    if (this.updateInProgress || this.updateLoading) return;
+    this.updateLoading = true;
+    this.updateMessage = '';
+    this.systemService.startUpdateBackground().subscribe({
+      next: (res: UpdateStartResponse) => {
+        this.updateLoading = false;
+        if (res?.started) {
+          this.updateInProgress = true;
+          this.updateMessage = 'Atualização iniciada em segundo plano.';
+          this.versionPoll = setInterval(() => {
+            this.systemService.getVersionInfo().subscribe({
+              next: (info: VersionInfo) => {
+                const before = this.versionInfo?.current_commit;
+                this.versionInfo = info;
+                const changed = before && info.current_commit && before !== info.current_commit;
+                if (changed || info.update_available === false) {
+                  this.updateInProgress = false;
+                  if (this.versionPoll) { clearInterval(this.versionPoll); this.versionPoll = undefined; }
+                  this.updateMessage = 'Atualização concluída.';
+                }
+              },
+              error: () => { }
+            });
+          }, 1500);
+        } else {
+          this.updateMessage = res?.log || 'Não foi possível iniciar a atualização.';
+        }
+      },
+      error: (err: any) => {
+        this.updateLoading = false;
+        this.updateMessage = err?.message || 'Falha ao iniciar a atualização.';
+      }
+    });
   }
 
+  // Benchmark assíncrono
   runBenchmark(): void {
-    this.benchRunning = true;
-    this.benchResult = null;
-  this.benchProgress = 0;
-    if (this.benchPollSub) {
-      this.benchPollSub.unsubscribe();
-      this.benchPollSub = null;
-    }
     const req: BenchmarkRequest = {
       type: this.benchType,
       duration: this.benchDuration,
-      size_mb: this.benchType === 'disk' || this.benchType === 'memory' ? this.benchSizeMb : undefined,
-      threads: this.benchType === 'cpu' ? (this.benchThreads ?? undefined) : undefined,
+      size_mb: (this.benchType === 'disk' || this.benchType === 'memory') ? this.benchSizeMb : undefined,
+      threads: this.benchType === 'cpu' ? this.benchThreads : undefined
     };
-    this.systemService.startBenchmark(req).subscribe({
-      next: ({ job_id }) => {
-        this.benchPollSub = interval(500).pipe(
+    this.benchRunning = true;
+    this.benchProgress = 0;
+    this.benchResult = null;
+
+    this.systemService.startBenchmarkJob(req).subscribe({
+      next: ({ job_id }: { job_id: string }) => {
+        this.benchPollSub?.unsubscribe();
+        this.benchPollSub = interval(1000).pipe(
           switchMap(() => this.systemService.getBenchmarkStatus(job_id))
         ).subscribe({
           next: (st: BenchmarkJobStatus) => {
-            if (typeof st.progress === 'number') {
-              this.benchProgress = st.progress;
-            }
-            if (st.status === 'completed') {
-              this.benchResult = st.result || { type: this.benchType, message: 'Concluído' };
+            this.benchProgress = Math.max(0, Math.min(100, Math.round((st.progress ?? 0))));
+            if (st.status === 'completed' || st.status === 'canceled' || st.status === 'error' || st.status === 'failed') {
               this.benchRunning = false;
+              this.benchResult = st.result ?? { status: st.status, error: st.error };
               this.benchPollSub?.unsubscribe();
-              this.benchPollSub = null;
-            } else if (st.status === 'failed') {
-              this.benchResult = { type: this.benchType, error: st.error || 'Falha' };
-              this.benchRunning = false;
-              this.benchPollSub?.unsubscribe();
-              this.benchPollSub = null;
             }
-            // else running/queued, UI will show progress
           },
-          error: (err) => {
-            this.benchResult = { type: this.benchType, error: err.message };
+          error: () => {
             this.benchRunning = false;
             this.benchPollSub?.unsubscribe();
-            this.benchPollSub = null;
           }
         });
       },
-      error: (err) => {
-        this.benchResult = { type: this.benchType, error: err.message };
-        this.benchRunning = false;
-      }
+      error: () => { this.benchRunning = false; }
     });
+  }
+
+  // Classe visual para barras
+  getStatusClass(val: number): string {
+    if (val >= 90) return 'danger';
+    if (val >= 70) return 'warning';
+    return 'ok';
   }
 }

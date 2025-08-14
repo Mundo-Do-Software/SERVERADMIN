@@ -21,6 +21,55 @@
 
   <!-- System Info -->
   <div *ngIf="systemInfo" class="dashboard-grid">
+    <!-- Updates Card -->
+    <div class="card system-updates">
+      <div class="card-header">
+        <h3>Atualizações</h3>
+      </div>
+      <div class="card-body">
+        <div *ngIf="versionInfo; else loadVersion">
+          <div class="updates-grid">
+            <div class="info-item">
+              <label>Branch:</label>
+              <span>{{ versionInfo.branch || 'main' }}</span>
+            </div>
+            <div class="info-item">
+              <label>Commit Atual:</label>
+              <span>{{ versionInfo.current_commit }}</span>
+            </div>
+            <div class="info-item">
+              <label>Descrição:</label>
+              <span>{{ versionInfo.describe || '-' }}</span>
+            </div>
+            <div class="info-item">
+              <label>Ahead/Behind:</label>
+              <span>{{ versionInfo.ahead || 0 }} / {{ versionInfo.behind || 0 }}</span>
+            </div>
+          </div>
+          <div class="changelog" *ngIf="(versionInfo?.changelog?.length || 0) > 0">
+            <label>Novidades:</label>
+            <ul>
+              <li *ngFor="let item of versionInfo!.changelog">{{ item }}</li>
+            </ul>
+          </div>
+          <div class="actions">
+            <button class="btn btn-success" (click)="startUpdate()"
+              [disabled]="updateStarting || !versionInfo.update_available">
+              <i class="fas fa-download" [class.fa-spin]="updateStarting"></i>
+              {{ updateStarting ? 'Iniciando...' : 'Atualizar' }}
+            </button>
+            <small class="muted" *ngIf="!versionInfo?.update_available">Já está na última versão.</small>
+          </div>
+          <div *ngIf="updateMessage" class="alert alert-info">{{ updateMessage }}</div>
+        </div>
+        <ng-template #loadVersion>
+          <div class="loading-inline">
+            <div class="spinner small"></div>
+            <span>Checando atualizações...</span>
+          </div>
+        </ng-template>
+      </div>
+    </div>
     <!-- System Overview -->
     <div class="card system-overview">
       <div class="card-header">
@@ -68,9 +117,8 @@
             <span class="resource-value">{{ systemInfo.cpu_usage }}%</span>
           </div>
           <div class="progress-bar">
-            <div class="progress-fill" 
-                 [style.width.%]="systemInfo.cpu_usage"
-                 [class]="getStatusClass(systemInfo.cpu_usage)">
+            <div class="progress-fill" [style.width.%]="systemInfo.cpu_usage"
+              [class]="getStatusClass(systemInfo.cpu_usage)">
             </div>
           </div>
         </div>
@@ -81,9 +129,8 @@
             <span class="resource-value">{{ systemInfo.memory_usage }}%</span>
           </div>
           <div class="progress-bar">
-            <div class="progress-fill" 
-                 [style.width.%]="systemInfo.memory_usage"
-                 [class]="getStatusClass(systemInfo.memory_usage)">
+            <div class="progress-fill" [style.width.%]="systemInfo.memory_usage"
+              [class]="getStatusClass(systemInfo.memory_usage)">
             </div>
           </div>
         </div>
@@ -94,9 +141,8 @@
             <span class="resource-value">{{ systemInfo.disk_usage }}%</span>
           </div>
           <div class="progress-bar">
-            <div class="progress-fill" 
-                 [style.width.%]="systemInfo.disk_usage"
-                 [class]="getStatusClass(systemInfo.disk_usage)">
+            <div class="progress-fill" [style.width.%]="systemInfo.disk_usage"
+              [class]="getStatusClass(systemInfo.disk_usage)">
             </div>
           </div>
         </div>
@@ -105,9 +151,9 @@
           <div class="resource-header">
             <span>Load Average</span>
             <span class="resource-value">
-              {{ systemInfo.load_average[0] | number:'1.2-2' }} / 
-              {{ systemInfo.load_average[1] | number:'1.2-2' }} / 
-              {{ systemInfo.load_average[2] | number:'1.2-2' }}
+              {{ systemInfo.load_average?.[0] | number:'1.2-2' }} /
+              {{ systemInfo.load_average?.[1] | number:'1.2-2' }} /
+              {{ systemInfo.load_average?.[2] | number:'1.2-2' }}
             </span>
           </div>
         </div>
@@ -139,8 +185,8 @@
                 <td>{{ process.cpu_percent | number:'1.1-1' }}%</td>
                 <td>{{ process.memory_percent | number:'1.1-1' }}%</td>
                 <td>
-                  <span class="status-badge" [class]="'status-' + process.status.toLowerCase()">
-                    {{ process.status }}
+                  <span class="status-badge" [class]="'status-' + ((process.status || '').toLowerCase())">
+                    {{ process.status || '—' }}
                   </span>
                 </td>
                 <td>{{ process.username }}</td>
@@ -158,25 +204,15 @@
       </div>
       <div class="card-body">
         <div class="disk-list">
-          <div class="disk-item" *ngFor="let disk of disks">
-            <div class="disk-header">
-              <h4>{{ disk.device }}</h4>
-              <span class="mount-point">{{ disk.mountpoint }}</span>
-              <span class="fs-type">{{ disk.fstype }}</span>
+          <!-- Exemplo onde lista discos: ajuste para campos opcionais -->
+          <li class="disk-item" *ngFor="let d of disks">
+            <div>
+              <strong>{{ d.device || d.mountpoint || 'disco' }}</strong>
+              <small class="text-muted ms-1">{{ d.fstype || '—' }}</small>
             </div>
-            <div class="disk-usage">
-              <div class="disk-stats">
-                <span>{{ formatBytes(disk.used) }} / {{ formatBytes(disk.total) }}</span>
-                <span class="percentage">{{ disk.percent }}%</span>
-              </div>
-              <div class="progress-bar">
-                <div class="progress-fill" 
-                     [style.width.%]="disk.percent"
-                     [class]="getStatusClass(disk.percent)">
-                </div>
-              </div>
+            <div>{{ d.used | number:'1.0-0' }} / {{ d.total | number:'1.0-0' }} ({{ d.percent | number:'1.0-0' }}%)
             </div>
-          </div>
+          </li>
         </div>
       </div>
     </div>
@@ -215,11 +251,64 @@
           </button>
         </div>
         <div class="progress" *ngIf="benchRunning">
-          <div class="progress-bar" role="progressbar" [style.width.%]="benchProgress" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar" role="progressbar" [style.width.%]="benchProgress" aria-valuemin="0"
+            aria-valuemax="100">
             {{ benchProgress }}%
           </div>
         </div>
         <pre class="bench-result" *ngIf="benchResult as r">{{ r | json }}</pre>
+      </div>
+    </div>
+
+    <!-- Card: Atualizações do Sistema -->
+    <div class="card mt-3">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span>Atualizações do Sistema</span>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary" (click)="loadVersionInfo()"
+            [disabled]="versionLoading || updateInProgress">
+            {{ versionLoading ? 'Verificando...' : 'Verificar' }}
+          </button>
+          <button class="btn btn-sm btn-primary" (click)="startBackgroundUpdate()"
+            [disabled]="updateLoading || updateInProgress || versionInfo?.update_available === false">
+            <span *ngIf="updateLoading" class="spinner-border spinner-border-sm me-1"></span>
+            {{ updateInProgress ? 'Atualizando...' : 'Atualizar em segundo plano' }}
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <ng-container *ngIf="versionInfo as v; else noVersion">
+          <div class="row">
+            <div class="col-md-6">
+              <ul class="list-unstyled mb-2">
+                <li><strong>Branch:</strong> {{ v.branch || '—' }}</li>
+                <li><strong>Commit atual:</strong> {{ (v.current_commit || '—') | slice:0:10 }}</li>
+                <li><strong>Data do commit:</strong> {{ v.current_date || '—' }}</li>
+                <li><strong>Remote:</strong> {{ v.remote_url || '—' }}</li>
+              </ul>
+              <div class="small text-muted">
+                Ahead: {{ v.ahead ?? 0 }} • Behind: {{ v.behind ?? 0 }}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="alert" [ngClass]="v.update_available ? 'alert-warning' : 'alert-success'">
+                <ng-container *ngIf="v.update_available; else upToDate">Nova versão disponível.</ng-container>
+                <ng-template #upToDate>O sistema está atualizado.</ng-template>
+              </div>
+              <div *ngIf="updateMessage" class="small mt-2">{{ updateMessage }}</div>
+            </div>
+          </div>
+
+          <div *ngIf="v.changelog?.length" class="mt-3">
+            <strong>Alterações recentes:</strong>
+            <ul class="mb-0">
+              <li *ngFor="let line of v.changelog">{{ line }}</li>
+            </ul>
+          </div>
+        </ng-container>
+        <ng-template #noVersion>
+          <div class="text-muted">Sem informações de versão no momento.</div>
+        </ng-template>
       </div>
     </div>
   </div>

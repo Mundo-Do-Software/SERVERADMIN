@@ -152,21 +152,8 @@ update_code() {
     log "Atualizando código..."
     
     cd "$INSTALL_DIR"
-
     # Garantir que o remoto 'origin' usa HTTPS (repositório público)
-    local remote_url
-    remote_url=$(as_service_user "cd '$INSTALL_DIR' && git remote get-url origin" 2>/dev/null || true)
-    if [[ -n "$remote_url" ]]; then
-        if [[ "$remote_url" =~ ^git@github.com: ]]; then
-            local https_url
-            https_url=$(echo "$remote_url" | sed -E 's#git@github.com:#https://github.com/#')
-            log "Convertendo remoto para HTTPS: $https_url"
-            as_service_user "cd '$INSTALL_DIR' && git remote set-url origin '$https_url'"
-        fi
-    else
-        # Se não houver remoto, configura o oficial via HTTPS
-        as_service_user "cd '$INSTALL_DIR' && git remote add origin https://github.com/Mundo-Do-Software/SERVERADMIN.git" || true
-    fi
+    ensure_https_remote
 
     # Verificar se há mudanças locais (como o usuário do serviço)
     if ! as_service_user "cd '$INSTALL_DIR' && git diff-index --quiet HEAD --"; then

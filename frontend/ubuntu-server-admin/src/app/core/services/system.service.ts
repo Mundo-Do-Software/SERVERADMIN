@@ -1,116 +1,41 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Observable, throwError } from 'rxjs';
-import { catchError, retry } from 'rxjs/operators';
-import { environment } from '../../../environments/environment';
-import { AuthService } from './auth.service';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
 
-export interface GpuInfo {
-  type: string;
-  name: string;
-  bus_id?: string;
-  memory_total?: number | null;
-  memory_used?: number | null;
-  memory_free?: number | null;
-  temperature?: number | null;
-  utilization?: number | null;
-  driver_version?: string | null;
-  cuda_version?: string | null;
-}
-
-export interface CpuInfo {
-  cores_physical: number;
-  cores_logical: number;
-  frequency?: {
-    current: number;
-    min: number;
-    max: number;
-  };
-  usage_percent: number;
-}
-
-export interface MemoryInfo {
-  total: number;
-  available: number;
-  used: number;
-  free: number;
-  percent: number;
-}
-
-export interface DiskInfo {
-  total: number;
-  used: number;
-  free: number;
-  percent: number;
-}
-
-export interface SystemInfo {
-  hostname: string;
-  os_version: string;
-  kernel_version: string;
-  uptime: string;
-  cpu_usage: number;
-  memory_usage: number;
-  disk_usage: number;
-  load_average: number[];
-  boot_time: string;
-  architecture: string;
-  os_info?: string;
-  temperature?: number;
-  // Campos adicionais do backend
-  system?: string;
-  node?: string;
-  release?: string;
-  version?: string;
-  machine?: string;
-  processor?: string;
-  gpu?: GpuInfo[];
-  // Informações detalhadas
-  cpu?: CpuInfo;
-  memory?: MemoryInfo;
-  disk?: DiskInfo;
-  temperatures?: Temperatures;
-}
-
-export interface Temperatures {
-  cpu?: number | null;
-  cpu_package?: number | null;
-  cpu_core_max?: number | null;
-  nvme: Array<{ label?: string | null; temp: number | null }>;
-  gpus: Array<{ name?: string; temperature?: number | null }>;
-}
-
+// Tipos faltantes
 export interface ProcessInfo {
   pid: number;
   name: string;
-  cpu_percent: number;
-  memory_percent: number;
-  status: string;
-  username: string;
-  command: string;
+  username?: string;
+  cpu_percent?: number;
+  memory_percent?: number;
+  status?: string;
 }
 
 export interface DiskInfo {
-  device: string;
-  mountpoint: string;
-  fstype: string;
+  device?: string;
+  mountpoint?: string;
+  fstype?: string;
   total: number;
   used: number;
   free: number;
   percent: number;
 }
 
+export interface SystemNetworkAddress {
+  address: string;
+  netmask?: string;
+  family?: string;
+}
+
 export interface SystemNetworkInterface {
-  interface: string;
-  ip_address: string;
-  netmask: string;
-  broadcast: string;
-  mac_address: string;
-  is_up: boolean;
-  bytes_sent: number;
-  bytes_recv: number;
-  packets_sent: number;
-  packets_recv: number;
+  name: string;
+  mac?: string;
+  is_up?: boolean;
+  speed_mbps?: number | null;
+  ipv4?: string;
+  ipv6?: string;
+  addresses?: SystemNetworkAddress[];
 }
 
 export type BenchmarkType = 'cpu' | 'disk' | 'memory' | 'gpu';
@@ -119,142 +44,101 @@ export interface BenchmarkRequest {
   type: BenchmarkType;
   duration?: number;
   size_mb?: number;
-  threads?: number | null;
+  threads?: number;
 }
 
 export interface BenchmarkResult {
-  type: BenchmarkType | string;
+  type: BenchmarkType;
   [key: string]: any;
-}
-
-export interface BenchmarkJobStart {
-  job_id: string;
 }
 
 export interface BenchmarkJobStatus {
   id: string;
-  status: 'queued' | 'running' | 'completed' | 'failed';
-  progress: number;
-  result?: BenchmarkResult;
-  error?: string;
-  start_time?: number;
-  end_time?: number;
-  params?: any;
+  type: BenchmarkType;
+  status: 'queued' | 'running' | 'completed' | 'canceled' | 'error' | 'failed';
+  progress?: number | null;
+  result?: BenchmarkResult | any;
+  error?: string | null;
+  logs?: string[];
+  metrics?: any;
+  started_at?: string;
 }
 
-@Injectable({
-  providedIn: 'root'
-})
+export interface VersionInfo {
+  repo?: string;
+  current_commit?: string;
+  current_date?: string;
+  branch?: string;
+  describe?: string;
+  remote_url?: string;
+  ahead?: number | null;
+  behind?: number | null;
+  update_available?: boolean;
+  changelog?: string[];
+}
+
+export interface UpdateStartResponse {
+  started: boolean;
+  pid?: number;
+  log?: string;
+}
+
+// Estrutura com campos usados no app (mantém compat)
+export interface SystemInfo {
+  hostname: string;
+  os_version: string;
+  uptime: string;
+  cpu_usage: number;
+  memory_usage: number;
+  disk_usage: number;
+
+  cpu: any;
+  memory: any;
+  disk: any;
+  gpu: any[];
+
+  temperatures?: any;
+  temperature?: number | null;
+  load_average?: any;
+  kernel_version?: string;
+  architecture?: string;
+}
+
+@Injectable({ providedIn: 'root' })
 export class SystemService {
-  private apiUrl = environment.apiUrl;
+  private base = '/api/v1';
+  constructor(private http: HttpClient) {}
 
-  constructor(
-    private http: HttpClient,
-    private authService: AuthService
-  ) {}
-
+  // System data
   getSystemInfo(): Observable<SystemInfo> {
-    return this.http.get<SystemInfo>(`${this.apiUrl}/system/info`)
-      .pipe(
-        retry(2),
-        catchError(this.handleError)
-      );
+    return this.http.get<SystemInfo>(`${this.base}/system/info`);
   }
-
   getProcesses(): Observable<ProcessInfo[]> {
-    return this.http.get<ProcessInfo[]>(`${this.apiUrl}/system/processes`)
-      .pipe(
-        retry(2),
-        catchError(this.handleError)
-      );
+    return this.http.get<ProcessInfo[]>(`${this.base}/system/processes`);
   }
-
   getDiskUsage(): Observable<DiskInfo[]> {
-    return this.http.get<DiskInfo[]>(`${this.apiUrl}/system/disks`)
-      .pipe(
-        retry(2),
-        catchError(this.handleError)
-      );
+    return this.http.get<DiskInfo[]>(`${this.base}/system/disks`);
   }
-
   getNetworkInterfaces(): Observable<SystemNetworkInterface[]> {
-    return this.http.get<SystemNetworkInterface[]>(`${this.apiUrl}/system/network`)
-      .pipe(
-        retry(2),
-        catchError(this.handleError)
-      );
+    return this.http.get<SystemNetworkInterface[]>(`${this.base}/system/network`);
   }
 
-  getSystemLogs(lines: number = 100): Observable<string[]> {
-    return this.http.get<string[]>(`${this.apiUrl}/system/logs?lines=${lines}`)
-      .pipe(
-        retry(2),
-        catchError(this.handleError)
-      );
+  // Version/Update
+  getVersionInfo(): Observable<VersionInfo> {
+    return this.http.get<VersionInfo>(`${this.base}/system/version`);
+  }
+  startUpdateBackground(): Observable<UpdateStartResponse> {
+    return this.http.post<UpdateStartResponse>(`${this.base}/system/update/start`, {});
   }
 
-  rebootSystem(): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.apiUrl}/system/reboot`, {})
-      .pipe(
-        catchError(this.handleError)
-      );
+  // Benchmarks (assíncronos)
+  startBenchmarkJob(req: BenchmarkRequest): Observable<{ job_id: string }> {
+    return this.http.post<{ job_id: string }>(`${this.base}/system/benchmark/start`, req);
   }
-
-  shutdownSystem(): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.apiUrl}/system/shutdown`, {})
-      .pipe(
-        catchError(this.handleError)
-      );
-  }
-
-  updateSystem(): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.apiUrl}/system/update`, {})
-      .pipe(
-        catchError(this.handleError)
-      );
-  }
-
-  runBenchmark(req: BenchmarkRequest): Observable<BenchmarkResult> {
-    return this.http.post<BenchmarkResult>(`${this.apiUrl}/system/benchmark`, req)
-      .pipe(
-        catchError(this.handleError)
-      );
-  }
-
-  startBenchmark(req: BenchmarkRequest): Observable<BenchmarkJobStart> {
-    return this.http.post<BenchmarkJobStart>(`${this.apiUrl}/system/benchmark/start`, req)
-      .pipe(catchError(this.handleError));
-  }
-
   getBenchmarkStatus(jobId: string): Observable<BenchmarkJobStatus> {
-    return this.http.get<BenchmarkJobStatus>(`${this.apiUrl}/system/benchmark/status/${jobId}`)
-      .pipe(catchError(this.handleError));
+    return this.http.get<BenchmarkJobStatus>(`${this.base}/system/benchmark/status/${jobId}`);
   }
-
-  private handleError(error: HttpErrorResponse) {
-    let errorMessage = 'Erro desconhecido!';
-    
-    if (error.error instanceof ErrorEvent) {
-      // Client-side error
-      errorMessage = `Erro: ${error.error.message}`;
-    } else {
-      // Server-side error
-      switch (error.status) {
-        case 0:
-          errorMessage = 'Não foi possível conectar ao servidor. Verifique sua conexão.';
-          break;
-        case 404:
-          errorMessage = 'Endpoint não encontrado.';
-          break;
-        case 500:
-          errorMessage = 'Erro interno do servidor.';
-          break;
-        default:
-          errorMessage = `Erro ${error.status}: ${error.message}`;
-      }
-    }
-    
-    console.error('SystemService Error:', error);
-    return throwError(() => new Error(errorMessage));
+  cancelBenchmark(jobId: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/system/benchmark/cancel/${jobId}`, {});
   }
 }
