@@ -49,10 +49,12 @@ detect_service_user() {
 # Executa comando como SERVICE_USER com shell de login para carregar ambiente (nvm, etc.)
 as_service_user() {
     local cmd="$1"
+    local home_dir
+    home_dir=$(getent passwd "$SERVICE_USER" | cut -d: -f6 2>/dev/null || echo "/root")
     if [[ "$SERVICE_USER" == "root" ]]; then
-        bash -lc "$cmd"
+        HOME="$home_dir" bash -lc "$cmd"
     else
-        sudo -u "$SERVICE_USER" -H bash -lc "$cmd"
+        sudo -u "$SERVICE_USER" -H env HOME="$home_dir" bash -lc "$cmd"
     fi
 }
 
@@ -113,25 +115,25 @@ ensure_git_access() {
     setup_ssh_for_git_update
     # Retestar
     if ! as_service_user "cd '$INSTALL_DIR' && GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git ls-remote origin -h >/dev/null 2>&1"; then
-        log_warning "Ainda sem acesso ao GitHub via SSH para o usuário $SERVICE_USER. Se o repositório for público, podemos alternar para HTTPS temporariamente."
-        # Alternativa: tentar HTTPS se remoto atual é SSH e repositório for público
-        local remote_url
-        remote_url=$(as_service_user "cd '$INSTALL_DIR' && git remote get-url origin" 2>/dev/null || true)
-        if [[ "$remote_url" == git@github.com:* ]]; then
-            local https_url
-            https_url=$(echo "$remote_url" | sed -E 's#git@github.com:#https://github.com/#')
-            log_warning "Tentando usar HTTPS: $https_url"
-            if as_service_user "cd '$INSTALL_DIR' && git remote set-url origin '$https_url' && git ls-remote origin -h >/dev/null 2>&1"; then
-                log "Acesso via HTTPS funcionando. Prosseguindo com update pelo HTTPS."
-                echo ""
-            else
-                log_error "Sem acesso ao repositório. Adicione a chave SSH ao GitHub e tente novamente."
-                exit 1
+        local ALLOW_HTTPS="${ALLOW_GIT_HTTPS:-false}"
+        if [[ "$ALLOW_HTTPS" == "true" ]]; then
+            log_warning "SSH indisponível. ALLOW_GIT_HTTPS=true definido: tentando fallback para HTTPS."
+            local remote_url
+            remote_url=$(as_service_user "cd '$INSTALL_DIR' && git remote get-url origin" 2>/dev/null || true)
+            if [[ "$remote_url" == git@github.com:* ]]; then
+                local https_url
+                https_url=$(echo "$remote_url" | sed -E 's#git@github.com:#https://github.com/#')
+                log_warning "Usando HTTPS temporariamente: $https_url"
+                if as_service_user "cd '$INSTALL_DIR' && git remote set-url origin '$https_url' && git ls-remote origin -h >/dev/null 2>&1"; then
+                    log "Acesso via HTTPS funcionando. Prosseguindo com update pelo HTTPS."
+                    return 0
+                fi
             fi
-        else
-            log_error "Sem acesso ao repositório. Adicione a chave SSH ao GitHub e tente novamente."
-            exit 1
         fi
+        log_error "Sem acesso ao repositório via SSH. Adicione a chave SSH do usuário $SERVICE_USER ao GitHub e rode novamente."
+        echo ""
+        echo "Chave pública do usuário $SERVICE_USER:"; as_service_user "cat ~/.ssh/id_ed25519.pub 2>/dev/null || true"
+        exit 1
     fi
 }
 
@@ -461,8 +463,14 @@ main() {
     
     check_root
     detect_service_user >/dev/null
+    if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
+        log_warning "Usuário de serviço '$SERVICE_USER' não existe. Usando root para operações."
+    fi
     check_installation
     
+    # Garantir acesso Git antes de qualquer operação com git
+    ensure_git_access
+
     # Verificar se há atualizações
     cd "$INSTALL_DIR"
     as_service_user "cd '$INSTALL_DIR' && git fetch origin"
