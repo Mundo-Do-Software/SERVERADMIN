@@ -59,8 +59,29 @@ export class PremiumDashboardComponent implements OnInit, OnDestroy {
             load_average: [0.85, 0.92, 0.78],
             boot_time: '2024-01-15 09:30:00',
             architecture: 'x86_64',
-            os_info: 'Ubuntu 22.04 LTS',
-            temperature: 42
+            temperature: 42,
+            cpu: {
+              model: 'Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz',
+              cores: 8,
+              threads: 8,
+              speed: 3.6
+            },
+            memory: {
+              total: 16384,
+              used: 11092,
+              free: 5292
+            },
+            disk: {
+              total: 512000,
+              used: 230400,
+              free: 281600
+            },
+            gpu: [{
+              model: 'NVIDIA GeForce GTX 1660',
+              memory_total: 6144,
+              memory_used: 2048,
+              temperature: 38
+            }]
           };
         }
       });

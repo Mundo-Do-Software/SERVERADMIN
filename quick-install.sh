@@ -1,12 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
 # ==============================================================================
 # Ubuntu Server Admin - Script de Instalação Simplificado
 # ==============================================================================
-# Versão simplificada focada em funcionalidade básica
-# ==============================================================================
-
-set -e
 
 # Cores
 RED='\033[0;31m'
@@ -20,146 +17,125 @@ INSTALL_DIR="/opt/ubuntu-server-admin"
 SERVICE_USER="serveradmin"
 DOMAIN="server.mundodosoftware.com.br"
 
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
-}
+# Evita prompts do Angular
+export NG_CLI_ANALYTICS=false
+export CI=true
 
-log_error() {
-    echo -e "${RED}[ERROR] $1${NC}" >&2
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING] $1${NC}"
-}
+log()        { echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"; }
+log_error()  { echo -e "${RED}[ERROR] $1${NC}" >&2; }
+log_warning(){ echo -e "${YELLOW}[WARNING] $1${NC}"; }
 
 check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        log_error "Execute como root: sudo ./quick-install.sh"
-        exit 1
-    fi
+  if [[ $EUID -ne 0 ]]; then
+    log_error "Execute como root: sudo ./quick-install.sh"
+    exit 1
+  fi
 }
 
-# 1. Atualizar sistema
 update_system() {
-    log "Atualizando sistema..."
-    apt-get update
-    apt-get upgrade -y
+  log "Atualizando sistema..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get upgrade -y -qq || true
 }
 
-# 2. Instalar dependências básicas
 install_dependencies() {
-    log "Instalando dependências..."
-    
-    # Instalar apenas dependências básicas
-    apt-get install -y \
-        python3 python3-pip python3-venv \
-        postgresql postgresql-contrib \
-        redis-server \
-        nginx \
-        git curl wget
-    
-    # Verificar Node.js e npm
-    if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-        log_error "Node.js ou npm não encontrados. Por favor, instale manualmente:"
-        log_error "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -"
-        log_error "sudo apt-get install -y nodejs"
-        exit 1
-    else
-        log "Node.js: $(node --version), npm: $(npm --version)"
-    fi
+  log "Instalando dependências..."
+  apt-get install -y \
+    python3 python3-pip python3-venv \
+    postgresql postgresql-contrib \
+    redis-server \
+    nginx \
+    git curl wget ufw
+
+  if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
+    log_error "Node.js/npm ausentes. Instale:"
+    log_error "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -"
+    log_error "sudo apt-get install -y nodejs"
+    exit 1
+  else
+    log "Node.js: $(node --version), npm: $(npm --version)"
+  fi
 }
 
-# 3. Configurar usuário
 setup_user() {
-    log "Criando usuário do sistema..."
-    if ! id "$SERVICE_USER" &>/dev/null; then
-        useradd -r -m -s /bin/bash "$SERVICE_USER"
-    fi
+  log "Criando usuário do sistema..."
+  if ! id "$SERVICE_USER" &>/dev/null; then
+    useradd -r -m -s /bin/bash "$SERVICE_USER"
+  fi
 }
 
-# 4. Configurar banco
 setup_database() {
-    log "Configurando PostgreSQL..."
-    
-    sudo -u postgres psql -c "CREATE USER serveradmin WITH PASSWORD 'serveradmin123';" 2>/dev/null || true
-    sudo -u postgres psql -c "CREATE DATABASE serveradmin OWNER serveradmin;" 2>/dev/null || true
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE serveradmin TO serveradmin;" 2>/dev/null || true
+  log "Configurando PostgreSQL..."
+  sudo -u postgres psql -c "CREATE USER serveradmin WITH PASSWORD 'serveradmin123';" 2>/dev/null || true
+  sudo -u postgres psql -c "CREATE DATABASE serveradmin OWNER serveradmin;" 2>/dev/null || true
+  sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE serveradmin TO serveradmin;" 2>/dev/null || true
 }
 
-# 5. Clonar e configurar aplicação
 setup_application() {
-    log "Removendo instalações antigas..."
-    # Remover backend antigo
-    rm -rf "$INSTALL_DIR"
-    # Remover frontend antigo
-    rm -rf /var/www/html/serveradmin
-    # Remover configuração do NGINX
-    rm -f /etc/nginx/sites-available/serveradmin
-    rm -f /etc/nginx/sites-enabled/serveradmin
-    # Remover certificados SSL
-    rm -rf /etc/letsencrypt/live/$DOMAIN
-    rm -rf /etc/letsencrypt/archive/$DOMAIN
-    rm -f /etc/letsencrypt/renewal/$DOMAIN.conf
-    # Remover logs
-    rm -f /var/log/nginx/serveradmin.*
+  log "Removendo instalações antigas..."
+  rm -rf "$INSTALL_DIR" /var/www/html/serveradmin
+  rm -f /etc/nginx/sites-available/serveradmin /etc/nginx/sites-enabled/serveradmin
+  rm -f /var/log/nginx/serveradmin.*
 
-    log "Configurando aplicação..."
-    # Repositório público: clonar via HTTPS
-    git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"
-    chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
+  log "Clonando aplicação..."
+  git clone https://github.com/Mundo-Do-Software/SERVERADMIN.git "$INSTALL_DIR"
+  chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
 
-    # Configurar backend
-    cd "$INSTALL_DIR/backend"
-    sudo -u "$SERVICE_USER" python3 -m venv venv
-    sudo -u "$SERVICE_USER" venv/bin/pip install -r requirements.txt
+  log "Configurando backend..."
+  cd "$INSTALL_DIR/backend"
+  sudo -u "$SERVICE_USER" python3 -m venv venv
+  sudo -u "$SERVICE_USER" venv/bin/pip install -r requirements.txt
 
-    # Criar arquivo .env
-    sudo -u "$SERVICE_USER" cat > .env << EOF
+  sudo -u "$SERVICE_USER" bash -c "cat > .env" << EOF
 DATABASE_URL=postgresql://serveradmin:serveradmin123@localhost/serveradmin
 REDIS_URL=redis://localhost:6379
-SECRET_KEY=your-secret-key-here
+SECRET_KEY=$(openssl rand -hex 32)
 DEBUG=False
 ALLOWED_HOSTS=$DOMAIN,localhost,127.0.0.1
 EOF
 
-    # Configurar frontend
-    cd "$INSTALL_DIR/frontend/ubuntu-server-admin"
-    sudo -u "$SERVICE_USER" npm install
-    sudo -u "$SERVICE_USER" npm run build
+  log "Configurando frontend..."
+  cd "$INSTALL_DIR/frontend/ubuntu-server-admin"
+  sudo -u "$SERVICE_USER" npm install
+  # Build não-interativo
+  if sudo -u "$SERVICE_USER" npx ng build --configuration production --no-interactive; then
+    log "Build do frontend concluído"
+  else
+    log_warning "Build otimizado falhou. Tentando básico..."
+    sudo -u "$SERVICE_USER" npx ng build --aot=false --optimization=false --no-interactive
+  fi
 
-    # Copiar arquivos buildados (Angular output em /browser)
-    mkdir -p /var/www/html/serveradmin/browser
+  mkdir -p /var/www/html/serveradmin/browser
+  if [[ -d dist/ubuntu-server-admin/browser ]]; then
     cp -r dist/ubuntu-server-admin/browser/* /var/www/html/serveradmin/browser/
-    chown -R www-data:www-data /var/www/html/serveradmin
+  else
+    cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/browser/ || true
+  fi
+  chown -R www-data:www-data /var/www/html/serveradmin
 }
 
-# 6. Configurar NGINX (apenas HTTP)
 setup_nginx() {
-    log "Configurando NGINX..."
-    
-    # Gerar config do NGINX sem expandir variáveis ($uri, $host, etc.)
-    # Usamos um placeholder __DOMAIN__ e substituímos após criar o arquivo.
-    cat > /etc/nginx/sites-available/serveradmin << 'EOF'
+  log "Configurando NGINX..."
+  cat > /etc/nginx/sites-available/serveradmin << 'EOF'
 server {
     listen 80;
-    server_name __DOMAIN__;
+    server_name _;
+
     root /var/www/html/serveradmin/browser;
     index index.html;
 
-    # ACME challenge (Certbot)
     location /.well-known/acme-challenge/ {
         root /var/www/html;
         try_files $uri =404;
     }
 
-    # Frontend
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # API
     location /api/ {
-        proxy_pass http://127.0.0.1:8000/;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -167,38 +143,24 @@ server {
         proxy_redirect off;
     }
 
-    # Logs
     access_log /var/log/nginx/serveradmin.access.log;
     error_log /var/log/nginx/serveradmin.error.log;
 }
 EOF
-
-    # Substituir placeholder do domínio
-    sed -i "s/__DOMAIN__/$DOMAIN/g" /etc/nginx/sites-available/serveradmin
-
-    # Ativar site
-    ln -sf /etc/nginx/sites-available/serveradmin /etc/nginx/sites-enabled/
-    rm -f /etc/nginx/sites-enabled/default
-    
-    # Testar configuração
-    nginx -t
-    
-    # Iniciar NGINX se não estiver rodando, senão recarregar
-    if ! systemctl is-active nginx &>/dev/null; then
-        systemctl start nginx
-        systemctl enable nginx
-        log "NGINX iniciado"
-    else
-        systemctl reload nginx
-        log "NGINX recarregado"
-    fi
+  ln -sf /etc/nginx/sites-available/serveradmin /etc/nginx/sites-enabled/
+  rm -f /etc/nginx/sites-enabled/default
+  nginx -t
+  if ! systemctl is-active nginx &>/dev/null; then
+    systemctl start nginx
+    systemctl enable nginx
+  else
+    systemctl reload nginx
+  fi
 }
 
-# 7. Criar serviço systemd
 setup_service() {
-    log "Criando serviço systemd..."
-    
-    cat > /etc/systemd/system/ubuntu-server-admin.service << EOF
+  log "Criando serviço systemd..."
+  cat > /etc/systemd/system/ubuntu-server-admin.service << EOF
 [Unit]
 Description=Ubuntu Server Admin API
 After=network.target postgresql.service redis.service
@@ -215,59 +177,44 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
-
-    systemctl daemon-reload
-    systemctl enable ubuntu-server-admin
-    systemctl start ubuntu-server-admin
+  systemctl daemon-reload
+  systemctl enable ubuntu-server-admin
+  systemctl start ubuntu-server-admin
 }
 
-# 8. Configurar firewall básico
 setup_firewall() {
-    log "Configurando firewall..."
-    ufw --force enable
-    ufw allow ssh
-    ufw allow 'Nginx Full'
+  log "Configurando firewall..."
+  ufw --force enable || true
+  ufw allow ssh || true
+  ufw allow 'Nginx Full' || true
 }
 
-# Função principal
 main() {
-    clear
-    echo -e "${BLUE}╔══════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║       Ubuntu Server Admin Setup         ║${NC}"
-    echo -e "${BLUE}║          Instalação Rápida              ║${NC}"
-    echo -e "${BLUE}╚══════════════════════════════════════════╝${NC}"
-    echo ""
-    
-    check_root
-    
-    log "Iniciando instalação..."
-    update_system
-    install_dependencies
-    setup_user
-    setup_database
-    setup_application
-    setup_nginx
-    setup_service
-    setup_firewall
-    
-    echo ""
-    echo -e "${GREEN}╔══════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║         INSTALAÇÃO CONCLUÍDA            ║${NC}"
-    echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
-    echo ""
-    echo -e "${BLUE}🌍 Acesse: http://$DOMAIN${NC}"
-    echo -e "${BLUE}📱 API: http://$DOMAIN/api${NC}"
-    echo -e "${BLUE}📚 Docs: http://$DOMAIN/api/docs${NC}"
-    echo ""
-    echo -e "${YELLOW}🔐 Credenciais padrão:${NC}"
-    echo -e "${YELLOW}   Usuário: admin${NC}"
-    echo -e "${YELLOW}   Senha: admin123${NC}"
-    echo ""
-    echo -e "${YELLOW}⚡ Comandos úteis:${NC}"
-    echo -e "${YELLOW}   Status: systemctl status ubuntu-server-admin${NC}"
-    echo -e "${YELLOW}   Logs: journalctl -u ubuntu-server-admin -f${NC}"
-    echo -e "${YELLOW}   Reiniciar: systemctl restart ubuntu-server-admin${NC}"
-    echo ""
+  clear
+  echo -e "${BLUE}╔══════════════════════════════════════════╗${NC}"
+  echo -e "${BLUE}║       Ubuntu Server Admin Setup         ║${NC}"
+  echo -e "${BLUE}║          Instalação Rápida              ║${NC}"
+  echo -e "${BLUE}╚══════════════════════════════════════════╝${NC}"
+  echo ""
+
+  check_root
+  log "Iniciando instalação..."
+  update_system
+  install_dependencies
+  setup_user
+  setup_database
+  setup_application
+  setup_nginx
+  setup_service
+  setup_firewall
+
+  echo ""
+  echo -e "${GREEN}INSTALAÇÃO CONCLUÍDA${NC}"
+  echo -e "${BLUE}🌍 Acesse: http://$DOMAIN${NC}"
+  echo -e "${BLUE}📱 API: http://$DOMAIN/api${NC}"
+  echo -e "${BLUE}📚 Docs: http://$DOMAIN/api/docs${NC}"
+  echo ""
+  echo -e "${YELLOW}🔐 Credenciais padrão: admin / admin123${NC}"
 }
 
 main "$@"
