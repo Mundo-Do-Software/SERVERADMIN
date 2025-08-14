@@ -9,6 +9,12 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import pwd
 import grp
+try:
+    import simplepam  # lightweight PAM auth
+    _pam_available = True
+except Exception:
+    simplepam = None
+    _pam_available = False
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
@@ -22,6 +28,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "
 ENV_ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
 ENV_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # pode ser texto puro ou hash bcrypt
 ENV_ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH")  # se fornecido, prioriza hash
+REQUIRE_SYSTEM_USER = os.getenv("REQUIRE_SYSTEM_USER", "true").lower() in ("1", "true", "yes", "on")
 
 class LoginRequest(BaseModel):
     username: str
@@ -45,9 +52,9 @@ def verify_user_credentials(username: str, password: str) -> bool:
        - Suporta ADMIN_PASSWORD_HASH (bcrypt) ou senha em texto puro em ADMIN_PASSWORD
     2) Caso contrário, tenta validar como usuário do sistema via 'su'.
     """
-    # 1) Fallback admin por ambiente
+    # 1) Fallback admin por ambiente (somente se NÃO exigir usuário do sistema)
     try:
-        if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME:
+        if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
             # Hash tem prioridade
             if ENV_ADMIN_PASSWORD_HASH:
                 try:
@@ -62,8 +69,14 @@ def verify_user_credentials(username: str, password: str) -> bool:
     except Exception as e:
         print(f"Error validating env admin credentials: {e}")
 
-    # 2) Usuário do sistema (melhor esforço)
+    # 2) Usuário do sistema (preferência por PAM)
     try:
+        if _pam_available:
+            try:
+                return bool(simplepam.authenticate(username, password, service='login'))
+            except Exception as e:
+                print(f"PAM auth error: {e}")
+                # fallback to 'su' below
         # Usando su para verificar as credenciais
         # Este método funciona em sistemas Unix/Linux
         result = subprocess.run(
@@ -85,8 +98,8 @@ def check_sudo_privileges(username: str) -> bool:
     Verifica se o usuário tem privilégios sudo
     """
     try:
-        # Admin por ambiente: considerar sudo habilitado para acesso ao painel
-        if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME:
+    # Admin por ambiente: considerar sudo habilitado quando permitido por configuração
+    if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
             return True
         # Verifica se o usuário está no grupo sudo ou wheel
         result = subprocess.run(
