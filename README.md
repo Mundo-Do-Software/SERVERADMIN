@@ -383,4 +383,4 @@ ng serve
 
 ## Licença
 
-MIT License
+Este projeto está licenciado sob a licença MIT. Veja o arquivo LICENSE para detalhes.
