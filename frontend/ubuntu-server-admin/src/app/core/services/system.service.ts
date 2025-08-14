@@ -127,6 +127,21 @@ export interface BenchmarkResult {
   [key: string]: any;
 }
 
+export interface BenchmarkJobStart {
+  job_id: string;
+}
+
+export interface BenchmarkJobStatus {
+  id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  progress: number;
+  result?: BenchmarkResult;
+  error?: string;
+  start_time?: number;
+  end_time?: number;
+  params?: any;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -204,6 +219,16 @@ export class SystemService {
       .pipe(
         catchError(this.handleError)
       );
+  }
+
+  startBenchmark(req: BenchmarkRequest): Observable<BenchmarkJobStart> {
+    return this.http.post<BenchmarkJobStart>(`${this.apiUrl}/system/benchmark/start`, req)
+      .pipe(catchError(this.handleError));
+  }
+
+  getBenchmarkStatus(jobId: string): Observable<BenchmarkJobStatus> {
+    return this.http.get<BenchmarkJobStatus>(`${this.apiUrl}/system/benchmark/status/${jobId}`)
+      .pipe(catchError(this.handleError));
   }
 
   private handleError(error: HttpErrorResponse) {

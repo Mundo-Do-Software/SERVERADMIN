@@ -14,6 +14,10 @@ import time
 import tempfile
 import hashlib
 import multiprocessing as mp
+import threading
+import uuid
+import threading
+import uuid
 
 router = APIRouter()
 def _which_nvidia_smi() -> Optional[str]:
@@ -598,6 +602,8 @@ def _gpu_benchmark(duration: int = 10) -> Dict[str, Any]:
         if shutil.which(name):
             tool = name
             break
+    if not tool and shutil.which("stress-ng"):
+        tool = "stress-ng"
     if not tool and shutil.which("hashcat"):
         tool = "hashcat"
 
@@ -617,6 +623,17 @@ def _gpu_benchmark(duration: int = 10) -> Dict[str, Any]:
             proc = subprocess.run([tool, str(max(1, duration))], capture_output=True, text=True, timeout=max(15, duration + 5))
             ok = proc.returncode == 0
             out = (proc.stdout or "") + "\n" + (proc.stderr or "")
+            return {"type": "gpu", "tool": tool, "duration": duration, "success": ok, "output": out[-4000:]}
+        except Exception as e:
+            return {"type": "gpu", "tool": tool, "duration": duration, "success": False, "error": str(e)}
+
+    if tool == "stress-ng":
+        try:
+            # stress-ng com stressor de GPU se disponível
+            cmd = ["stress-ng", "--gpu", "1", "--timeout", f"{max(1, duration)}s", "--metrics-brief"]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=max(15, duration + 5))
+            ok = proc.returncode == 0
+            out = (proc.stdout or "") + (proc.stderr or "")
             return {"type": "gpu", "tool": tool, "duration": duration, "success": ok, "output": out[-4000:]}
         except Exception as e:
             return {"type": "gpu", "tool": tool, "duration": duration, "success": False, "error": str(e)}
@@ -669,3 +686,438 @@ async def run_benchmark(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao executar benchmark: {str(e)}")
+
+
+# =======================
+# Benchmarks assíncronos
+# =======================
+
+_JOB_LOCK = threading.Lock()
+_JOBS: Dict[str, Dict[str, Any]] = {}
+
+
+def _set_job(job_id: str, **kwargs):
+    with _JOB_LOCK:
+        job = _JOBS.get(job_id, {})
+        job.update(kwargs)
+        _JOBS[job_id] = job
+
+
+def _get_job(job_id: str) -> Optional[Dict[str, Any]]:
+    with _JOB_LOCK:
+        return _JOBS.get(job_id)
+
+
+def _run_job(job_id: str, payload: Dict[str, Any]):
+    btype = str(payload.get("type", "cpu")).lower()
+    duration = int(payload.get("duration", 10))
+    size_mb = int(payload.get("size_mb", 256))
+    threads = payload.get("threads")
+    threads = int(threads) if threads is not None else None
+
+    start_ts = time.time()
+    _set_job(job_id, status="running", progress=0, start_time=start_ts)
+
+    try:
+        if btype == "cpu":
+            # Launch worker processes as before, but update progress by elapsed time
+            if threads is None or threads <= 0:
+                threads = max(1, psutil.cpu_count(logical=True) or 1)
+            end_time = time.time() + max(1, duration)
+            counter = mp.Value('i', 0)
+
+            def worker(end_time_: float, counter_: Any):
+                data = b"x" * 4096
+                local_count = 0
+                h = hashlib.sha256
+                while time.time() < end_time_:
+                    _ = h(data).digest()
+                    local_count += 1
+                with counter_.get_lock():
+                    counter_.value += local_count
+
+            procs: List[mp.Process] = []
+            for _ in range(threads):
+                p = mp.Process(target=worker, args=(end_time, counter))
+                p.start()
+                procs.append(p)
+            # progress loop
+            while time.time() < end_time:
+                elapsed = time.time() - start_ts
+                _set_job(job_id, progress=min(99, int(elapsed / max(1, duration) * 100)))
+                time.sleep(0.5)
+            for p in procs:
+                p.join()
+            total_ops = int(counter.value)
+            ops_per_sec = total_ops / max(1.0, duration)
+            result = {"type": "cpu", "workers": threads, "duration": duration, "sha256_ops": total_ops, "ops_per_sec": round(ops_per_sec, 2)}
+            _set_job(job_id, status="completed", progress=100, result=result, end_time=time.time())
+
+        elif btype == "disk":
+            size_mb = max(16, min(size_mb, 4096))
+            tmp_dir = "/tmp"
+            os.makedirs(tmp_dir, exist_ok=True)
+            path = os.path.join(tmp_dir, f"serveradmin_benchmark_{job_id}.bin")
+            buf = b"\0" * (1024 * 1024)
+            # write phase
+            start = time.time()
+            with open(path, "wb") as f:
+                for i in range(size_mb):
+                    f.write(buf)
+                    if i % 4 == 0:
+                        # halfway progress up to 50%
+                        _set_job(job_id, progress=int((i + 1) / size_mb * 50))
+                f.flush(); os.fsync(f.fileno())
+            write_sec = time.time() - start
+            write_mb_s = size_mb / write_sec if write_sec > 0 else 0.0
+            # read phase
+            start = time.time()
+            read_bytes = 0
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    read_bytes += len(chunk)
+                    if read_bytes % (4 * 1024 * 1024) == 0:
+                        # progress 50%..95%
+                        frac = min(0.95, 0.5 + (read_bytes / (size_mb * 1024 * 1024)) * 0.5)
+                        _set_job(job_id, progress=int(frac * 100))
+            read_sec = time.time() - start
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+            read_mb = read_bytes / (1024 * 1024)
+            read_mb_s = read_mb / read_sec if read_sec > 0 else 0.0
+            result = {"type": "disk", "size_mb": size_mb, "write_sec": round(write_sec, 3), "write_mb_s": round(write_mb_s, 2), "read_sec": round(read_sec, 3), "read_mb_s": round(read_mb_s, 2)}
+            _set_job(job_id, status="completed", progress=100, result=result, end_time=time.time())
+
+        elif btype == "memory":
+            size_mb = max(64, min(size_mb, 8192))
+            block = bytearray(1024 * 1024)
+            blocks = size_mb
+            data = bytearray(size_mb * 1024 * 1024)
+            end_time = time.time() + max(1, duration)
+            bytes_copied = 0
+            while time.time() < end_time:
+                for i in range(blocks):
+                    start_idx = i * len(block)
+                    data[start_idx:start_idx + len(block)] = block
+                    bytes_copied += len(block)
+                elapsed = time.time() - start_ts
+                _set_job(job_id, progress=min(95, int(elapsed / max(1, duration) * 100)))
+            sec = time.time() - start_ts
+            mbps = (bytes_copied / (1024 * 1024)) / sec if sec > 0 else 0.0
+            result = {"type": "memory", "size_mb": size_mb, "duration": duration, "mem_copy_mb_s": round(mbps, 2)}
+            _set_job(job_id, status="completed", progress=100, result=result, end_time=time.time())
+
+        elif btype == "gpu":
+            # Try stress tools with timeout; update progress by elapsed
+            end_time = time.time() + max(1, duration)
+            tool = None
+            for name in ["gpu-burn", "gpu_burn", "stress-ng", "hashcat"]:
+                if shutil.which(name):
+                    tool = name
+                    break
+            if tool is None:
+                present = _which_nvidia_smi() is not None
+                result = {"type": "gpu", "available": present, "tool": None, "message": "Instale 'gpu-burn' ou 'stress-ng' ou 'hashcat' para testes reais."}
+                _set_job(job_id, status="completed", progress=100, result=result, end_time=time.time())
+            else:
+                try:
+                    if tool in ("gpu-burn", "gpu_burn"):
+                        cmd = [tool, str(max(1, duration))]
+                    elif tool == "stress-ng":
+                        cmd = ["stress-ng", "--gpu", "1", "--timeout", f"{max(1, duration)}s", "--metrics-brief"]
+                    else:  # hashcat benchmark
+                        cmd = ["hashcat", "-b", "-m", "0", "--quiet"]
+                    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                    while True:
+                        if proc.poll() is not None:
+                            break
+                        elapsed = time.time() - start_ts
+                        _set_job(job_id, progress=min(99, int(elapsed / max(1, duration) * 100)))
+                        time.sleep(0.5)
+                    out, _ = proc.communicate(timeout=5)
+                    ok = (proc.returncode or 0) == 0
+                    result = {"type": "gpu", "tool": tool, "duration": duration, "success": ok, "output": (out or "")[-4000:]}
+                    _set_job(job_id, status="completed", progress=100, result=result, end_time=time.time())
+                except Exception as e:
+                    _set_job(job_id, status="failed", progress=100, error=str(e), end_time=time.time())
+
+        else:
+            _set_job(job_id, status="failed", progress=100, error="Tipo de benchmark inválido", end_time=time.time())
+
+    except Exception as e:
+        _set_job(job_id, status="failed", progress=100, error=str(e), end_time=time.time())
+
+
+@router.post("/benchmark/start")
+async def start_benchmark(
+    payload: Dict[str, Any],
+    current_user: str = Depends(verify_token)
+):
+    job_id = uuid.uuid4().hex
+    _set_job(job_id, id=job_id, status="queued", progress=0, params=payload)
+    t = threading.Thread(target=_run_job, args=(job_id, payload), daemon=True)
+    t.start()
+    return {"job_id": job_id}
+
+
+@router.get("/benchmark/status/{job_id}")
+async def benchmark_status(job_id: str, current_user: str = Depends(verify_token)):
+    job = _get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job não encontrado")
+    return job
+
+
+# =======================
+# Benchmarks em background (jobs)
+# =======================
+
+JOBS: Dict[str, Dict[str, Any]] = {}
+JOBS_LOCK = threading.Lock()
+
+
+def _set_job(job_id: str, updates: Dict[str, Any]):
+    with JOBS_LOCK:
+        if job_id in JOBS:
+            JOBS[job_id].update(updates)
+
+
+def _create_job(payload: Dict[str, Any]) -> str:
+    job_id = str(uuid.uuid4())
+    with JOBS_LOCK:
+        JOBS[job_id] = {
+            "id": job_id,
+            "type": payload.get("type", "cpu"),
+            "status": "queued",
+            "progress": 0.0,
+            "started_at": datetime.now().isoformat(),
+            "duration": payload.get("duration", 10),
+            "result": None,
+            "error": None,
+            "cancel": False,
+            "logs": [],
+            "params": payload,
+        }
+    return job_id
+
+
+def _job_worker(job_id: str):
+    job = JOBS.get(job_id, {})
+    btype = str(job.get("type", "cpu")).lower()
+    params = job.get("params", {})
+    duration = int(params.get("duration", 10))
+    size_mb = int(params.get("size_mb", 256))
+    threads = params.get("threads")
+    threads = int(threads) if threads is not None else None
+    start_time = time.time()
+    _set_job(job_id, {"status": "running", "progress": 0.0})
+
+    try:
+        if btype == "cpu":
+            # Reaproveita lógica: cria processos de CPU e acompanha pelo tempo
+            workers = threads if threads and threads > 0 else (psutil.cpu_count(logical=True) or 1)
+            end_time = start_time + max(1, duration)
+            counter = mp.Value('i', 0)
+
+            def cpu_worker(end_t: float, ctr: Any):
+                data = b"x" * 4096
+                local_count = 0
+                h = hashlib.sha256
+                while time.time() < end_t and not JOBS[job_id].get("cancel"):
+                    _ = h(data).digest()
+                    local_count += 1
+                with ctr.get_lock():
+                    ctr.value += local_count
+
+            procs: List[mp.Process] = []
+            for _ in range(workers):
+                p = mp.Process(target=cpu_worker, args=(end_time, counter))
+                p.start()
+                procs.append(p)
+            # Loop de progresso
+            while time.time() < end_time:
+                if JOBS[job_id].get("cancel"):
+                    break
+                elapsed = time.time() - start_time
+                prog = min(100.0, (elapsed / max(0.1, duration)) * 100.0)
+                _set_job(job_id, {"progress": round(prog, 1), "metrics": {"elapsed": round(elapsed, 2), "ops": int(counter.value)}})
+                time.sleep(0.5)
+            # Finalizar
+            for p in procs:
+                if p.is_alive():
+                    p.join(timeout=1)
+            total_ops = int(counter.value)
+            result = {
+                "type": "cpu",
+                "workers": workers,
+                "duration": duration,
+                "sha256_ops": total_ops,
+                "ops_per_sec": round(total_ops / max(1.0, duration), 2),
+            }
+            _set_job(job_id, {"result": result})
+
+        elif btype == "disk":
+            # Escreve e lê em blocos atualizando progresso por MB
+            size_mb = max(16, min(size_mb, 4096))
+            path = os.path.join(tempfile.gettempdir(), f"serveradmin_bench_{job_id}.bin")
+            buf = b"\0" * (1024 * 1024)
+            # Write with progress
+            written = 0
+            t0 = time.time()
+            with open(path, "wb") as f:
+                for _ in range(size_mb):
+                    if JOBS[job_id].get("cancel"):
+                        break
+                    f.write(buf)
+                    written += 1
+                    if written % 8 == 0:
+                        elapsed = time.time() - t0
+                        _set_job(job_id, {"progress": round((written / size_mb) * 100.0, 1), "metrics": {"written_mb": written, "elapsed": round(elapsed, 2)}})
+                f.flush(); os.fsync(f.fileno())
+            write_sec = time.time() - t0
+            # Read
+            read_bytes = 0
+            t1 = time.time()
+            with open(path, "rb") as f:
+                while True:
+                    if JOBS[job_id].get("cancel"):
+                        break
+                    chunk = f.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    read_bytes += len(chunk)
+                    if (read_bytes // (1024 * 1024)) % 16 == 0:
+                        elapsed = time.time() - t1
+                        _set_job(job_id, {"metrics": {"read_mb": int(read_bytes / (1024 * 1024)), "elapsed": round(elapsed, 2)}})
+            read_sec = time.time() - t1
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+            result = {
+                "type": "disk",
+                "size_mb": size_mb,
+                "write_sec": round(write_sec, 3),
+                "write_mb_s": round(size_mb / write_sec, 2) if write_sec > 0 else 0.0,
+                "read_sec": round(read_sec, 3),
+                "read_mb_s": round((read_bytes / (1024 * 1024)) / read_sec, 2) if read_sec > 0 else 0.0,
+            }
+            _set_job(job_id, {"result": result, "progress": 100.0})
+
+        elif btype == "memory":
+            size_mb = max(64, min(size_mb, 8192))
+            block = bytearray(1024 * 1024)
+            blocks = size_mb
+            data = bytearray(size_mb * 1024 * 1024)
+            end_time = start_time + max(1, duration)
+            bytes_copied = 0
+            while time.time() < end_time and not JOBS[job_id].get("cancel"):
+                for i in range(blocks):
+                    start_idx = i * len(block)
+                    data[start_idx:start_idx + len(block)] = block
+                    bytes_copied += len(block)
+                elapsed = time.time() - start_time
+                prog = min(100.0, (elapsed / max(0.1, duration)) * 100.0)
+                _set_job(job_id, {"progress": round(prog, 1), "metrics": {"elapsed": round(elapsed, 2), "copied_mb": int(bytes_copied / (1024 * 1024))}})
+            sec = time.time() - start_time
+            mbps = (bytes_copied / (1024 * 1024)) / sec if sec > 0 else 0.0
+            result = {"type": "memory", "size_mb": size_mb, "duration": duration, "mem_copy_mb_s": round(mbps, 2)}
+            _set_job(job_id, {"result": result})
+
+        elif btype == "gpu":
+            # Executa ferramenta externa se disponível
+            tool = None
+            for name in ["gpu-burn", "gpu_burn"]:
+                if shutil.which(name):
+                    tool = name
+                    break
+            if not tool and shutil.which("hashcat"):
+                tool = "hashcat"
+            end_time = start_time + max(1, duration)
+            if tool in ("gpu-burn", "gpu_burn"):
+                try:
+                    proc = subprocess.Popen([tool, str(duration)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                    out_lines: List[str] = []
+                    while proc.poll() is None:
+                        if JOBS[job_id].get("cancel"):
+                            proc.terminate(); break
+                        line = proc.stdout.readline() if proc.stdout else ''
+                        if line:
+                            out_lines.append(line.strip())
+                            if len(out_lines) > 200:
+                                out_lines = out_lines[-200:]
+                            _set_job(job_id, {"logs": out_lines[-10:]})
+                        elapsed = time.time() - start_time
+                        prog = min(100.0, (elapsed / max(0.1, duration)) * 100.0)
+                        _set_job(job_id, {"progress": round(prog, 1)})
+                        time.sleep(0.2)
+                    rc = proc.wait(timeout=5) if proc else 1
+                    result = {"type": "gpu", "tool": tool, "duration": duration, "success": rc == 0, "output": "\n".join(out_lines[-50:])}
+                    _set_job(job_id, {"result": result})
+                except Exception as e:
+                    _set_job(job_id, {"error": str(e)})
+            elif tool == "hashcat":
+                try:
+                    proc = subprocess.Popen(["hashcat", "-b", "-m", "0", "--quiet"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                    out_lines: List[str] = []
+                    while proc.poll() is None:
+                        if JOBS[job_id].get("cancel"):
+                            proc.terminate(); break
+                        line = proc.stdout.readline() if proc.stdout else ''
+                        if line:
+                            out_lines.append(line.strip())
+                            _set_job(job_id, {"logs": out_lines[-10:]})
+                        # Sem duração definida, apenas marca como em execução
+                        _set_job(job_id, {"progress": None})
+                        time.sleep(0.3)
+                    rc = proc.wait(timeout=5) if proc else 1
+                    result = {"type": "gpu", "tool": tool, "success": rc == 0, "output": "\n".join(out_lines[-50:])}
+                    _set_job(job_id, {"result": result})
+                except Exception as e:
+                    _set_job(job_id, {"error": str(e)})
+            else:
+                _set_job(job_id, {"result": {"type": "gpu", "available": _which_nvidia_smi() is not None, "message": "Instale gpu-burn ou hashcat para teste."}})
+        else:
+            _set_job(job_id, {"error": "Tipo de benchmark inválido"})
+
+        if JOBS[job_id].get("cancel"):
+            _set_job(job_id, {"status": "canceled"})
+        else:
+            _set_job(job_id, {"status": "completed", "progress": 100.0 if JOBS[job_id].get("progress") is not None else None})
+
+    except Exception as e:
+        _set_job(job_id, {"status": "error", "error": str(e)})
+
+
+@router.post("/benchmark/start")
+async def start_benchmark(payload: Dict[str, Any], current_user: str = Depends(verify_token)):
+    """Inicia um benchmark em background e retorna job_id."""
+    job_id = _create_job(payload)
+    t = threading.Thread(target=_job_worker, args=(job_id,), daemon=True)
+    t.start()
+    return {"job_id": job_id}
+
+
+@router.get("/benchmark/status/{job_id}")
+async def get_benchmark_status(job_id: str, current_user: str = Depends(verify_token)):
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job não encontrado")
+        # Evitar expor flags internas
+        safe = {k: v for k, v in job.items() if k not in ("cancel",)}
+        return safe
+
+
+@router.post("/benchmark/cancel/{job_id}")
+async def cancel_benchmark(job_id: str, current_user: str = Depends(verify_token)):
+    with JOBS_LOCK:
+        if job_id not in JOBS:
+            raise HTTPException(status_code=404, detail="Job não encontrado")
+        JOBS[job_id]["cancel"] = True
+        return {"message": "Cancelamento solicitado"}

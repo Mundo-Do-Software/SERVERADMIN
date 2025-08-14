@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { SystemService, SystemInfo, ProcessInfo, DiskInfo, BenchmarkRequest, BenchmarkResult } from '../../core/services/system.service';
+import { SystemService, SystemInfo, ProcessInfo, DiskInfo, BenchmarkRequest, BenchmarkResult, BenchmarkJobStatus } from '../../core/services/system.service';
 import { interval, Subscription } from 'rxjs';
 import { startWith, switchMap } from 'rxjs/operators';
 
@@ -26,6 +26,7 @@ export class SystemComponent implements OnInit, OnDestroy {
   benchResult: BenchmarkResult | null = null;
   
   private refreshSubscription: Subscription | null = null;
+  private benchPollSub: Subscription | null = null;
 
   constructor(private systemService: SystemService) { }
 
@@ -51,6 +52,9 @@ export class SystemComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     if (this.refreshSubscription) {
       this.refreshSubscription.unsubscribe();
+    }
+    if (this.benchPollSub) {
+      this.benchPollSub.unsubscribe();
     }
   }
 
@@ -113,21 +117,47 @@ export class SystemComponent implements OnInit, OnDestroy {
   runBenchmark(): void {
     this.benchRunning = true;
     this.benchResult = null;
+    if (this.benchPollSub) {
+      this.benchPollSub.unsubscribe();
+      this.benchPollSub = null;
+    }
     const req: BenchmarkRequest = {
       type: this.benchType,
       duration: this.benchDuration,
       size_mb: this.benchType === 'disk' || this.benchType === 'memory' ? this.benchSizeMb : undefined,
       threads: this.benchType === 'cpu' ? (this.benchThreads ?? undefined) : undefined,
     };
-    this.systemService.runBenchmark(req).subscribe({
-      next: (res) => {
-        this.benchResult = res;
-        this.benchRunning = false;
+    this.systemService.startBenchmark(req).subscribe({
+      next: ({ job_id }) => {
+        this.benchPollSub = interval(500).pipe(
+          switchMap(() => this.systemService.getBenchmarkStatus(job_id))
+        ).subscribe({
+          next: (st: BenchmarkJobStatus) => {
+            if (st.status === 'completed') {
+              this.benchResult = st.result || { type: this.benchType, message: 'Concluído' };
+              this.benchRunning = false;
+              this.benchPollSub?.unsubscribe();
+              this.benchPollSub = null;
+            } else if (st.status === 'failed') {
+              this.benchResult = { type: this.benchType, error: st.error || 'Falha' };
+              this.benchRunning = false;
+              this.benchPollSub?.unsubscribe();
+              this.benchPollSub = null;
+            }
+            // else running/queued, UI will show progress
+          },
+          error: (err) => {
+            this.benchResult = { type: this.benchType, error: err.message };
+            this.benchRunning = false;
+            this.benchPollSub?.unsubscribe();
+            this.benchPollSub = null;
+          }
+        });
       },
       error: (err) => {
         this.benchResult = { type: this.benchType, error: err.message };
         this.benchRunning = false;
-      },
+      }
     });
   }
 }
