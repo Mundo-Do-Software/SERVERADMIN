@@ -59,6 +59,13 @@ as_service_user() {
     fi
 }
 
+# Executa comando git com GIT_SSH_COMMAND fixando a identidade
+git_with_ssh() {
+    local repo_cmd="$1"
+    local ssh_opts="ssh -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519"
+    as_service_user "export GIT_SSH_COMMAND='$ssh_opts' && $repo_cmd"
+}
+
 # Garante que o host key do GitHub esteja no known_hosts do SERVICE_USER (não interativo)
 ensure_github_known_host() {
     as_service_user "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts"
@@ -109,7 +116,7 @@ setup_ssh_for_git_update() {
 ensure_git_access() {
     ensure_github_known_host
     # Testa acesso ao remoto atual (usa ls-remote para não alterar estado)
-    if as_service_user "cd '$INSTALL_DIR' && GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git ls-remote origin -h >/dev/null 2>&1"; then
+        if git_with_ssh "cd '$INSTALL_DIR' && git ls-remote origin -h >/dev/null 2>&1"; then
         return 0
     fi
     log_warning "Falha no acesso SSH ao repositório (Permission denied). Vamos configurar a chave SSH."
@@ -125,7 +132,7 @@ ensure_git_access() {
                 local https_url
                 https_url=$(echo "$remote_url" | sed -E 's#git@github.com:#https://github.com/#')
                 log_warning "Usando HTTPS temporariamente: $https_url"
-                if as_service_user "cd '$INSTALL_DIR' && git remote set-url origin '$https_url' && git ls-remote origin -h >/dev/null 2>&1"; then
+            if as_service_user "cd '$INSTALL_DIR' && git remote set-url origin '$https_url' && git ls-remote origin -h >/dev/null 2>&1"; then
                     log "Acesso via HTTPS funcionando. Prosseguindo com update pelo HTTPS."
                     return 0
                 fi
@@ -221,13 +228,13 @@ update_code() {
     if ! as_service_user "cd '$INSTALL_DIR' && git diff-index --quiet HEAD --"; then
         log_warning "Há mudanças locais não commitadas. Fazendo stash..."
         ensure_github_known_host
-        as_service_user "export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' && cd '$INSTALL_DIR' && git stash --include-untracked"
+            as_service_user "cd '$INSTALL_DIR' && git stash --include-untracked"
     fi
     
     # Atualizar código
     ensure_github_known_host
-    as_service_user "export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' && cd '$INSTALL_DIR' && git fetch origin"
-    as_service_user "export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' && cd '$INSTALL_DIR' && git reset --hard origin/main"
+        git_with_ssh "cd '$INSTALL_DIR' && git fetch origin"
+        git_with_ssh "cd '$INSTALL_DIR' && git reset --hard origin/main"
     
     log "Código atualizado"
 }
@@ -474,7 +481,7 @@ main() {
 
     # Verificar se há atualizações
     cd "$INSTALL_DIR"
-    as_service_user "cd '$INSTALL_DIR' && git fetch origin"
+    git_with_ssh "cd '$INSTALL_DIR' && git fetch origin"
     
     if as_service_user "cd '$INSTALL_DIR' && git diff HEAD origin/main --quiet"; then
         log "Sistema já está atualizado"
