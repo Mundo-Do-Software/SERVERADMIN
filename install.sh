@@ -380,7 +380,7 @@ prompt_config() {
                 echo ""
                 break
                 ;;
-            [Nn]|[Nn][Aa][Oo]|[Nn][Oo]|""
+            [Nn]|[Nn][Aa][Oo]|[Nn][Oo]|"")
                 echo -e "${YELLOW}❌ Instalação cancelada pelo usuário${NC}"
                 exit 0
                 ;;
