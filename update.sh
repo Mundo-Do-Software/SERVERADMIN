@@ -5,10 +5,12 @@
 # ==============================================================================
 # Este script atualiza o Ubuntu Server Admin com a versão mais recente
 #
-# Uso: sudo bash update.sh
+# Uso:
+#   sudo bash update.sh          # Atualiza para última versão
+#   sudo bash update.sh rollback # Restaura último backup
 # ==============================================================================
 
-set -e
+set -euo pipefail
 
 # Cores
 RED='\033[0;31m'
@@ -19,9 +21,40 @@ NC='\033[0m'
 
 # Configurações
 INSTALL_DIR="/opt/ubuntu-server-admin"
+# SERVICE_USER padrão; será autodetectado se inexistente
 SERVICE_USER="serveradmin"
 BACKUP_DIR="/opt/ubuntu-server-admin-backups"
 DEFAULT_WEB_ROOT="/var/www/html/serveradmin"
+
+# Descobrir usuário do serviço a partir do dono do diretório de instalação, se necessário
+detect_service_user() {
+    if id -u "$SERVICE_USER" >/dev/null 2>&1; then
+        echo "$SERVICE_USER"
+        return 0
+    fi
+    if [[ -d "$INSTALL_DIR" ]]; then
+        local owner
+        owner=$(stat -c %U "$INSTALL_DIR" 2>/dev/null || true)
+        if [[ -n "$owner" ]] && id -u "$owner" >/dev/null 2>&1; then
+            SERVICE_USER="$owner"
+            echo "$SERVICE_USER"
+            return 0
+        fi
+    fi
+    # Fallback
+    SERVICE_USER="root"
+    echo "$SERVICE_USER"
+}
+
+# Executa comando como SERVICE_USER com shell de login para carregar ambiente (nvm, etc.)
+as_service_user() {
+    local cmd="$1"
+    if [[ "$SERVICE_USER" == "root" ]]; then
+        bash -lc "$cmd"
+    else
+        sudo -u "$SERVICE_USER" -H bash -lc "$cmd"
+    fi
+}
 
 detect_web_root() {
     # Detecta o root atual do NGINX para o site serveradmin
@@ -68,10 +101,14 @@ check_installation() {
         log_error "Ubuntu Server Admin não está instalado em $INSTALL_DIR"
         exit 1
     fi
-    
-    if ! systemctl is-enabled ubuntu-server-admin &>/dev/null; then
-        log_error "Serviço ubuntu-server-admin não encontrado"
-        exit 1
+
+    # Considera presentes unidades enabled/disabled/static
+    if ! systemctl list-unit-files | grep -q "^ubuntu-server-admin\.service"; then
+        # Como fallback, tenta status (retorna 3 se inativo)
+        if ! systemctl status ubuntu-server-admin >/dev/null 2>&1; then
+            log_error "Serviço ubuntu-server-admin não encontrado"
+            exit 1
+        fi
     fi
 }
 
@@ -95,15 +132,15 @@ update_code() {
     
     cd "$INSTALL_DIR"
     
-    # Verificar se há mudanças locais
-    if ! git diff-index --quiet HEAD --; then
+    # Verificar se há mudanças locais (como o usuário do serviço)
+    if ! as_service_user "cd '$INSTALL_DIR' && git diff-index --quiet HEAD --"; then
         log_warning "Há mudanças locais não commitadas. Fazendo stash..."
-        sudo -u "$SERVICE_USER" git stash
+        as_service_user "cd '$INSTALL_DIR' && git stash --include-untracked"
     fi
     
     # Atualizar código
-    sudo -u "$SERVICE_USER" git fetch origin
-    sudo -u "$SERVICE_USER" git reset --hard origin/main
+    as_service_user "cd '$INSTALL_DIR' && git fetch origin"
+    as_service_user "cd '$INSTALL_DIR' && git reset --hard origin/main"
     
     log "Código atualizado"
 }
@@ -116,13 +153,25 @@ update_backend() {
     # Parar serviço
     systemctl stop ubuntu-server-admin
     
+    # Detectar/ajustar venv
+    local VENV_DIR=""
+    if [[ -d "venv" ]]; then
+        VENV_DIR="venv"
+    elif [[ -d ".venv" ]]; then
+        VENV_DIR=".venv"
+    else
+        log_warning "Ambiente virtual não encontrado. Criando em backend/venv..."
+        as_service_user "cd '$INSTALL_DIR/backend' && python3 -m venv venv"
+        VENV_DIR="venv"
+    fi
+    
     # Atualizar dependências
-    sudo -u "$SERVICE_USER" bash -c "source venv/bin/activate && pip install --upgrade pip"
-    sudo -u "$SERVICE_USER" bash -c "source venv/bin/activate && pip install -r requirements.txt --upgrade"
+    as_service_user "cd '$INSTALL_DIR/backend' && source '$VENV_DIR/bin/activate' && pip install --upgrade pip"
+    as_service_user "cd '$INSTALL_DIR/backend' && source '$VENV_DIR/bin/activate' && pip install -r requirements.txt --upgrade"
     
     # Executar migrações se existirem
     if [[ -f "migrations/versions" ]]; then
-        sudo -u "$SERVICE_USER" bash -c "source venv/bin/activate && alembic upgrade head"
+        as_service_user "cd '$INSTALL_DIR/backend' && source '$VENV_DIR/bin/activate' && alembic upgrade head"
     fi
     
     log "Backend atualizado"
@@ -133,12 +182,17 @@ update_frontend() {
     
     cd "$INSTALL_DIR/frontend/ubuntu-server-admin"
     
-    # Atualizar dependências
-    sudo -u "$SERVICE_USER" npm install
-    sudo -u "$SERVICE_USER" npm audit fix --force || true
-    
-    # Build para produção
-    sudo -u "$SERVICE_USER" npm run build
+    # Verificar disponibilidade do npm
+    if ! as_service_user "command -v npm >/dev/null 2>&1"; then
+        log_warning "npm não encontrado para o usuário $SERVICE_USER. Pulando rebuild do frontend."
+    else
+        # Atualizar dependências
+        as_service_user "cd '$INSTALL_DIR/frontend/ubuntu-server-admin' && npm install"
+        as_service_user "cd '$INSTALL_DIR/frontend/ubuntu-server-admin' && npm audit fix --force || true"
+        
+        # Build para produção
+        as_service_user "cd '$INSTALL_DIR/frontend/ubuntu-server-admin' && npm run build"
+    fi
     
     # Atualizar arquivos do NGINX conforme root configurado
     local web_root
@@ -230,8 +284,8 @@ show_summary() {
     
     # Mostrar versão atual
     cd "$INSTALL_DIR"
-    CURRENT_COMMIT=$(git rev-parse --short HEAD)
-    CURRENT_DATE=$(git log -1 --format=%cd --date=short)
+    CURRENT_COMMIT=$(as_service_user "cd '$INSTALL_DIR' && git rev-parse --short HEAD")
+    CURRENT_DATE=$(as_service_user "cd '$INSTALL_DIR' && git log -1 --format=%cd --date=short")
     
     echo -e "${BLUE}Versão Atual:${NC}"
     echo "  • Commit: $CURRENT_COMMIT"
@@ -322,13 +376,14 @@ main() {
     echo ""
     
     check_root
+    detect_service_user >/dev/null
     check_installation
     
     # Verificar se há atualizações
     cd "$INSTALL_DIR"
-    sudo -u "$SERVICE_USER" git fetch origin
+    as_service_user "cd '$INSTALL_DIR' && git fetch origin"
     
-    if git diff HEAD origin/main --quiet; then
+    if as_service_user "cd '$INSTALL_DIR' && git diff HEAD origin/main --quiet"; then
         log "Sistema já está atualizado"
         exit 0
     fi
@@ -337,7 +392,7 @@ main() {
     
     # Mostrar mudanças
     echo -e "${YELLOW}Mudanças na nova versão:${NC}"
-    git log --oneline HEAD..origin/main | head -10
+    as_service_user "cd '$INSTALL_DIR' && git log --oneline HEAD..origin/main | head -10"
     echo ""
     
     read -p "Continuar com a atualização? (y/N): " confirm
@@ -365,6 +420,7 @@ main() {
 # Verificar argumentos
 if [[ "$1" == "rollback" ]]; then
     check_root
+    detect_service_user >/dev/null
     rollback
     exit 0
 fi
