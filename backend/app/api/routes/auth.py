@@ -129,6 +129,8 @@ def verify_user_credentials(username: str, password: str) -> bool:
         return False
 
     try:
+        pam_ok = False
+
         if _pam2_available:
             pamh = PamLib()
             pam_services = PAM_SERVICES
@@ -138,11 +140,12 @@ def verify_user_credentials(username: str, password: str) -> bool:
                     ok = bool(pamh.authenticate(username, password, service=svc))
                     _dbg(f"python-pam service '{svc}' result: {ok}")
                     if ok:
-                        return True
+                        pam_ok = True
+                        break
                 except Exception as e:
                     _dbg(f"python-pam service '{svc}' error: {e}")
-            # fallthrough to simplepam
-        if _pam_available:
+
+        if not pam_ok and _pam_available:
             # Tenta múltiplos serviços PAM comuns no Ubuntu/Debian/CentOS
             pam_services = PAM_SERVICES
             _dbg(f"simplepam using services: {pam_services}")
@@ -151,28 +154,32 @@ def verify_user_credentials(username: str, password: str) -> bool:
                     ok = bool(simplepam.authenticate(username, password, service=svc))
                     _dbg(f"PAM service '{svc}' result: {ok}")
                     if ok:
-                        return True
+                        pam_ok = True
+                        break
                 except Exception as e:
                     _dbg(f"PAM service '{svc}' error: {e}")
-            return False
-        else:
-            _dbg("PAM not available; cannot verify system user credentials")
-            return False
+
+        if pam_ok:
+            return True
+
+        if not _pam2_available and not _pam_available:
+            _dbg("PAM not available; will try pexpect fallback if present")
 
         # Final fallback: use 'su' with a pseudo-terminal
         if _pexpect_available:
             try:
                 cmd = f"su - {shlex.quote(username)} -c 'id -u'"
                 _dbg(f"pexpect running: {cmd}")
-                child = pexpect.spawn('/bin/bash', ['-lc', cmd], encoding='utf-8', timeout=15)
-                # Expect password prompt (language agnostic patterns)
-                idx = child.expect([r'[Pp]assword:', r'su: Authentication failure', r'failure', pexpect.EOF, pexpect.TIMEOUT])
+                child = pexpect.spawn('/bin/bash', ['-lc', cmd], encoding='utf-8', timeout=20)
+                # Match common password prompt texts
+                idx = child.expect([r'[Pp]assword:', r'Authentication failure', r'incorrect password', pexpect.EOF, pexpect.TIMEOUT])
                 if idx == 0:
                     child.sendline(password)
-                    child.expect([pexpect.EOF, r'Authentication failure', r'incorrect password', pexpect.TIMEOUT])
+                    # After sending password, expect either success (EOF with exit 0) or failure messages
+                    idx2 = child.expect([pexpect.EOF, r'Authentication failure', r'incorrect password', pexpect.TIMEOUT])
                     child.close()
-                    ok = (child.exitstatus == 0)
-                    _dbg(f"pexpect su result: {ok}, status={child.exitstatus}")
+                    ok = (child.exitstatus == 0 and idx2 == 0)
+                    _dbg(f"pexpect su result: {ok}, status={child.exitstatus}, idx2={idx2}")
                     return ok
                 else:
                     _dbg(f"pexpect su did not get password prompt (idx={idx})")
