@@ -38,7 +38,8 @@ except Exception:
 
 # Ensure backend/.env is loaded so os.getenv picks values when running via systemd
 try:
-    _backend_dir = Path(__file__).resolve().parents[4]
+    # backend/.env (parents[3] points to backend directory)
+    _backend_dir = Path(__file__).resolve().parents[3]
     load_dotenv(_backend_dir / ".env")
 except Exception:
     pass
