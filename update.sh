@@ -62,7 +62,11 @@ as_service_user() {
 # Executa comando git com GIT_SSH_COMMAND fixando a identidade
 git_with_ssh() {
     local repo_cmd="$1"
-    local ssh_opts="ssh -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519"
+    # Build SSH command dynamically: use explicit identity only if it exists for SERVICE_USER
+    local ssh_opts="ssh -o StrictHostKeyChecking=accept-new"
+    if as_service_user "test -f ~/.ssh/id_ed25519"; then
+        ssh_opts+=" -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519"
+    fi
     as_service_user "export GIT_SSH_COMMAND='$ssh_opts' && $repo_cmd"
 }
 
