@@ -1,8 +1,10 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 import { catchError, tap, map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
+import { isPlatformBrowser } from '@angular/common';
+import { PLATFORM_ID } from '@angular/core';
 
 export interface AuthResponse {
   success: boolean;
@@ -39,27 +41,39 @@ export class AuthService {
   public currentUser$ = this.currentUserSubject.asObservable();
 
   constructor(
-    private http: HttpClient
+    private http: HttpClient,
+    @Inject(PLATFORM_ID) private platformId: Object
   ) {
     this.initializeAuth();
   }
 
   private initializeAuth(): void {
-    const token = localStorage.getItem('auth_token');
-    const userInfo = localStorage.getItem('user_info');
-    
-    if (token && userInfo) {
-      try {
-        const user = JSON.parse(userInfo);
-        this.currentUserSubject.next(user);
-        this.isAuthenticatedSubject.next(true);
-        
-        // Verifica se o token ainda é válido
-        this.verifyToken().subscribe({
-          error: () => this.logout()
-        });
-      } catch (error) {
-        this.logout();
+    if (isPlatformBrowser(this.platformId)) {
+      const token = localStorage.getItem('auth_token');
+      const userInfo = localStorage.getItem('user_info');
+      
+      if (token && userInfo) {
+        try {
+          const user = JSON.parse(userInfo);
+          this.currentUserSubject.next(user);
+          this.isAuthenticatedSubject.next(true);
+          
+          // Verifica se o token ainda é válido; só desloga em 401
+          this.verifyToken().subscribe({
+            error: (err: any) => {
+              const status = err?.status;
+              if (status === 401) {
+                this.logout();
+              } else {
+                // Mantém sessão em falhas transitórias (rede, 5xx, etc.)
+                // Pode-se revalidar mais tarde conforme necessário
+                // console.warn('Token verify failed, keeping session:', err);
+              }
+            }
+          });
+        } catch (error) {
+          this.logout();
+        }
       }
     }
   }
@@ -88,8 +102,10 @@ export class AuthService {
   }
 
   logout(): void {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user_info');
+    if (isPlatformBrowser(this.platformId)) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_info');
+    }
     
     this.isAuthenticatedSubject.next(false);
     this.currentUserSubject.next(null);
@@ -99,15 +115,20 @@ export class AuthService {
   }
 
   private setAuthData(token: string, user: UserInfo): void {
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('user_info', JSON.stringify(user));
+    if (isPlatformBrowser(this.platformId)) {
+      localStorage.setItem('auth_token', token);
+      localStorage.setItem('user_info', JSON.stringify(user));
+    }
     
     this.isAuthenticatedSubject.next(true);
     this.currentUserSubject.next(user);
   }
 
   getToken(): string | null {
-    return localStorage.getItem('auth_token');
+    if (isPlatformBrowser(this.platformId)) {
+      return localStorage.getItem('auth_token');
+    }
+    return null;
   }
 
   getAuthHeaders(): HttpHeaders {
