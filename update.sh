@@ -82,6 +82,22 @@ detect_web_root() {
     fi
 }
 
+# Garante que o remoto 'origin' usa HTTPS (repositório público)
+ensure_https_remote() {
+    local remote_url
+    remote_url=$(as_service_user "cd '$INSTALL_DIR' && git remote get-url origin" 2>/dev/null || echo "")
+    if [[ -z "$remote_url" ]]; then
+        as_service_user "cd '$INSTALL_DIR' && git remote add origin https://github.com/Mundo-Do-Software/SERVERADMIN.git" || true
+        return
+    fi
+    if [[ "$remote_url" =~ ^git@github.com: ]]; then
+        local https_url
+        https_url=$(echo "$remote_url" | sed -E 's#git@github.com:#https://github.com/#')
+        log "Convertendo remoto para HTTPS: $https_url"
+        as_service_user "cd '$INSTALL_DIR' && git remote set-url origin '$https_url'"
+    fi
+}
+
 log() {
     echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
 }
@@ -402,6 +418,9 @@ main() {
     fi
     check_installation
     
+    # Garantir que o remoto seja HTTPS antes de qualquer fetch
+    ensure_https_remote
+
     # Verificar se há atualizações
     cd "$INSTALL_DIR"
     as_service_user "cd '$INSTALL_DIR' && git fetch origin"
