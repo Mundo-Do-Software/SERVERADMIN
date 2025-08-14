@@ -11,77 +11,208 @@ from app.api.routes.auth import verify_token
 router = APIRouter()
 
 
-def get_gpu_info() -> List[Dict[str, Any]]:
-    """Obter informações da GPU se disponível."""
-    gpus = []
-    
+def _nvidia_driver_cuda() -> Dict[str, Optional[str]]:
+    """Extrai Driver e CUDA da saída padrão do 'nvidia-smi' (sem args)."""
+    info = {"driver_version": None, "cuda_version": None}
     try:
-        # Tentar usar nvidia-smi para GPUs NVIDIA
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,memory.total,memory.used,memory.free,temperature.gpu,utilization.gpu", 
-             "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        
+        result = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            for line in lines:
-                if line.strip():
-                    parts = [part.strip() for part in line.split(',')]
-                    if len(parts) >= 6:
-                        gpus.append({
-                            "type": "NVIDIA",
-                            "name": parts[0],
-                            "memory_total": int(parts[1]) if parts[1].isdigit() else 0,
-                            "memory_used": int(parts[2]) if parts[2].isdigit() else 0,
-                            "memory_free": int(parts[3]) if parts[3].isdigit() else 0,
-                            "temperature": int(parts[4]) if parts[4].isdigit() else 0,
-                            "utilization": int(parts[5]) if parts[5].isdigit() else 0
-                        })
+            out = result.stdout
+            m1 = re.search(r"Driver Version:\s*([\d.]+)", out)
+            m2 = re.search(r"CUDA Version:\s*([\d.]+)", out)
+            if m1:
+                info["driver_version"] = m1.group(1)
+            if m2:
+                info["cuda_version"] = m2.group(1)
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
-    
+    return info
+
+
+def get_gpu_info() -> List[Dict[str, Any]]:
+    """Obter informações da GPU se disponível (NVIDIA e genérico)."""
+    gpus: List[Dict[str, Any]] = []
+
+    # NVIDIA via nvidia-smi
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,pci.bus_id,memory.total,memory.used,memory.free,temperature.gpu,utilization.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            drv = _nvidia_driver_cuda()
+            for line in result.stdout.strip().splitlines():
+                if not line.strip():
+                    continue
+                parts = [part.strip() for part in line.split(",")]
+                if len(parts) >= 7:
+                    def _to_int(x: str) -> Optional[int]:
+                        try:
+                            return int(x)
+                        except Exception:
+                            return None
+                    gpus.append(
+                        {
+                            "type": "NVIDIA",
+                            "name": parts[0],
+                            "bus_id": parts[1],
+                            "memory_total": _to_int(parts[2]),
+                            "memory_used": _to_int(parts[3]),
+                            "memory_free": _to_int(parts[4]),
+                            "temperature": _to_int(parts[5]),
+                            "utilization": _to_int(parts[6]),
+                            "driver_version": drv.get("driver_version"),
+                            "cuda_version": drv.get("cuda_version"),
+                        }
+                    )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
     # Se não encontrou GPUs NVIDIA, tentar detectar outras GPUs via lspci
     if not gpus:
         try:
-            result = subprocess.run(
-                ["lspci", "-nn"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
+            result = subprocess.run(["lspci", "-nn"], capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                lines = result.stdout.split('\n')
-                for line in lines:
-                    if any(gpu_keyword in line.lower() for gpu_keyword in ['vga', 'display', '3d']):
-                        # Extrair informações básicas da GPU
-                        gpu_match = re.search(r':\s*(.+?)\s*\[', line)
+                for line in result.stdout.splitlines():
+                    if any(word in line.lower() for word in ["vga", "display", "3d"]):
+                        gpu_match = re.search(r":\s*(.+?)\s*\[", line)
                         if gpu_match:
                             gpu_name = gpu_match.group(1).strip()
+                            lower = gpu_name.lower()
                             gpu_type = "Integrated"
-                            if any(vendor in gpu_name.lower() for vendor in ['nvidia', 'geforce', 'quadro']):
+                            if any(v in lower for v in ["nvidia", "geforce", "quadro"]):
                                 gpu_type = "NVIDIA"
-                            elif any(vendor in gpu_name.lower() for vendor in ['amd', 'radeon', 'ati']):
+                            elif any(v in lower for v in ["amd", "radeon", "ati"]):
                                 gpu_type = "AMD"
-                            elif any(vendor in gpu_name.lower() for vendor in ['intel', 'uhd', 'iris']):
+                            elif any(v in lower for v in ["intel", "uhd", "iris"]):
                                 gpu_type = "Intel"
-                            
-                            gpus.append({
-                                "type": gpu_type,
-                                "name": gpu_name,
-                                "memory_total": None,
-                                "memory_used": None,
-                                "memory_free": None,
-                                "temperature": None,
-                                "utilization": None
-                            })
+                            gpus.append(
+                                {
+                                    "type": gpu_type,
+                                    "name": gpu_name,
+                                    "memory_total": None,
+                                    "memory_used": None,
+                                    "memory_free": None,
+                                    "temperature": None,
+                                    "utilization": None,
+                                }
+                            )
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
-    
+
     return gpus
+
+
+def _lscpu_json() -> Optional[Dict[str, Any]]:
+    """Tenta obter 'lscpu -J' (JSON)."""
+    try:
+        result = subprocess.run(["lscpu", "-J"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            # Newer lscpu returns {"lscpu": [{"field":"...","data":"..."}, ...]}
+            return data
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+        return None
+    return None
+
+
+def _cpuinfo_proc() -> Dict[str, Any]:
+    """Fallback via /proc/cpuinfo para sockets e modelos."""
+    sockets: Dict[str, str] = {}
+    try:
+        with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as f:
+            phys_id = None
+            model_name = None
+            for line in f:
+                if line.startswith("physical id"):
+                    phys_id = line.split(":", 1)[1].strip()
+                elif line.startswith("model name") or line.startswith("Model name"):
+                    model_name = line.split(":", 1)[1].strip()
+                if phys_id is not None and model_name is not None:
+                    sockets[phys_id] = model_name
+                    phys_id = None
+                    model_name = None
+    except Exception:
+        pass
+    return {"sockets": sockets}
+
+
+def get_cpu_details() -> Dict[str, Any]:
+    """Detalhes de CPU: sockets, modelos, threads, etc."""
+    details: Dict[str, Any] = {
+        "cores_physical": psutil.cpu_count(logical=False),
+        "cores_logical": psutil.cpu_count(logical=True),
+    }
+    data = _lscpu_json()
+    def _get(field: str) -> Optional[str]:
+        if not data or "lscpu" not in data:
+            return None
+        for item in data["lscpu"]:
+            if item.get("field", "").strip().rstrip(":") == field:
+                return item.get("data")
+        return None
+    model_name = _get("Model name") or _get("Model Name")
+    sockets_str = _get("Socket(s)")
+    cores_per_socket = _get("Core(s) per socket")
+    threads_per_core = _get("Thread(s) per core")
+    if model_name:
+        details["model_name"] = model_name
+    if sockets_str:
+        try:
+            details["sockets"] = int(sockets_str)
+        except Exception:
+            details["sockets"] = None
+    if cores_per_socket:
+        try:
+            details["cores_per_socket"] = int(cores_per_socket)
+        except Exception:
+            pass
+    if threads_per_core:
+        try:
+            details["threads_per_core"] = int(threads_per_core)
+        except Exception:
+            pass
+    # Per-socket models via /proc/cpuinfo if available
+    sockets = _cpuinfo_proc().get("sockets", {})
+    if sockets:
+        details["models_per_socket"] = sockets
+    return details
+
+
+def get_temperatures() -> Dict[str, Any]:
+    """Coleta temperaturas de CPU/GPU/NVMe quando possível."""
+    temps: Dict[str, Any] = {"cpu": None, "cpu_package": None, "cpu_core_max": None, "nvme": [], "gpus": []}
+    try:
+        st = psutil.sensors_temperatures(fahrenheit=False)
+        if st:
+            # CPU via 'coretemp'
+            if "coretemp" in st:
+                cpu_entries = st["coretemp"]
+                pkg = [t.current for t in cpu_entries if hasattr(t, 'label') and t.label and "Package" in t.label]
+                all_core = [t.current for t in cpu_entries if hasattr(t, 'current')]
+                temps["cpu_package"] = max(pkg) if pkg else (max(all_core) if all_core else None)
+                temps["cpu_core_max"] = max(all_core) if all_core else None
+                temps["cpu"] = temps["cpu_package"] or temps["cpu_core_max"]
+            # NVMe drives
+            for key in st.keys():
+                if key.lower().startswith("nvme"):
+                    nv = [{"label": getattr(t, 'label', None), "temp": t.current} for t in st[key] if hasattr(t, 'current')]
+                    temps["nvme"].extend(nv)
+    except Exception:
+        pass
+    # GPU temps from get_gpu_info()
+    try:
+        gpus = get_gpu_info()
+        temps["gpus"] = [{"name": g.get("name"), "temperature": g.get("temperature") } for g in gpus]
+    except Exception:
+        pass
+    return temps
 
 
 @router.get("/info", response_model=Dict[str, Any])
@@ -91,32 +222,34 @@ async def get_system_info(current_user: str = Depends(verify_token)):
         # Informações do sistema
         uname = platform.uname()
         boot_time = datetime.fromtimestamp(psutil.boot_time())
-        
+
         # CPU
         cpu_percent = psutil.cpu_percent(interval=1)
-        
+        cpu_details = get_cpu_details()
+
         # Memória
         memory = psutil.virtual_memory()
-        
+
         # Disco
-        disk = psutil.disk_usage('/')
-        
+        disk = psutil.disk_usage("/")
+
         # Load average (se disponível)
         try:
             load_avg = psutil.getloadavg()
-        except:
+        except Exception:
             load_avg = [0.0, 0.0, 0.0]
-        
+
         # Uptime
         uptime_seconds = datetime.now().timestamp() - psutil.boot_time()
         days = int(uptime_seconds // 86400)
         hours = int((uptime_seconds % 86400) // 3600)
         minutes = int((uptime_seconds % 3600) // 60)
         uptime_formatted = f"{days}d {hours}h {minutes}m"
-        
-        # GPU
+
+        # GPU e temperaturas
         gpu_info = get_gpu_info()
-        
+        temperatures = get_temperatures()
+
         return {
             "hostname": uname.node,
             "os_version": f"{uname.system} {uname.release}",
@@ -135,27 +268,28 @@ async def get_system_info(current_user: str = Depends(verify_token)):
             "version": uname.version,
             "machine": uname.machine,
             "processor": uname.processor,
-            "boot_time": boot_time.isoformat(),
             "cpu": {
                 "cores_physical": psutil.cpu_count(logical=False),
                 "cores_logical": psutil.cpu_count(logical=True),
                 "frequency": psutil.cpu_freq()._asdict() if psutil.cpu_freq() else None,
-                "usage_percent": cpu_percent
+                "usage_percent": cpu_percent,
+                **cpu_details,
             },
             "memory": {
                 "total": memory.total,
                 "available": memory.available,
                 "used": memory.used,
                 "free": memory.free,
-                "percent": memory.percent
+                "percent": memory.percent,
             },
             "disk": {
                 "total": disk.total,
                 "used": disk.used,
                 "free": disk.free,
-                "percent": (disk.used / disk.total) * 100
+                "percent": (disk.used / disk.total) * 100,
             },
-            "gpu": gpu_info
+            "gpu": gpu_info,
+            "temperatures": temperatures,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao obter informações do sistema: {str(e)}")
