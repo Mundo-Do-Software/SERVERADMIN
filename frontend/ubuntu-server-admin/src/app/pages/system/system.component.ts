@@ -24,6 +24,7 @@ export class SystemComponent implements OnInit, OnDestroy {
   benchThreads: number | null = null;
   benchRunning = false;
   benchResult: BenchmarkResult | null = null;
+  benchProgress = 0;
   
   private refreshSubscription: Subscription | null = null;
   private benchPollSub: Subscription | null = null;
@@ -117,6 +118,7 @@ export class SystemComponent implements OnInit, OnDestroy {
   runBenchmark(): void {
     this.benchRunning = true;
     this.benchResult = null;
+  this.benchProgress = 0;
     if (this.benchPollSub) {
       this.benchPollSub.unsubscribe();
       this.benchPollSub = null;
@@ -133,6 +135,9 @@ export class SystemComponent implements OnInit, OnDestroy {
           switchMap(() => this.systemService.getBenchmarkStatus(job_id))
         ).subscribe({
           next: (st: BenchmarkJobStatus) => {
+            if (typeof st.progress === 'number') {
+              this.benchProgress = st.progress;
+            }
             if (st.status === 'completed') {
               this.benchResult = st.result || { type: this.benchType, message: 'Concluído' };
               this.benchRunning = false;

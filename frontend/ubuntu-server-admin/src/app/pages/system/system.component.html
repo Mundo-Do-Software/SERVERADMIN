@@ -215,8 +215,8 @@
           </button>
         </div>
         <div class="progress" *ngIf="benchRunning">
-          <div class="progress-bar" role="progressbar" [style.width.%]="100" aria-valuemin="0" aria-valuemax="100">
-            Em execução...
+          <div class="progress-bar" role="progressbar" [style.width.%]="benchProgress" aria-valuemin="0" aria-valuemax="100">
+            {{ benchProgress }}%
           </div>
         </div>
         <pre class="bench-result" *ngIf="benchResult as r">{{ r | json }}</pre>
