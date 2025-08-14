@@ -33,8 +33,10 @@ SERVICE_USER="serveradmin"
 DB_NAME="serveradmin"
 DB_USER="serveradmin"
 NGINX_SITE="serveradmin"
-DOMAIN="localhost"
-SSL_EMAIL="admin@localhost"
+DOMAIN=""
+SSL_EMAIL=""
+USE_DOMAIN=false
+HTTPS_ENABLED=false
 
 # Flags de controle
 SKIP_SSL=false
@@ -65,6 +67,28 @@ log_warning() {
 log_info() {
     echo -e "${BLUE}[INFO] $1${NC}"
     echo "[INFO] $1" >> "$LOG_FILE"
+}
+
+# Detecção de IPs (locais e públicos)
+detect_ips() {
+    log "Detectando endereços IPv4/IPv6 locais e públicos..."
+
+    # Locais (globais) IPv4
+    LOCAL_IPV4S=$(ip -4 addr show scope global 2>/dev/null | awk '/inet /{print $2}' | cut -d'/' -f1 | tr '\n' ' ' | sed 's/ *$//')
+    # Locais (globais) IPv6
+    LOCAL_IPV6S=$(ip -6 addr show scope global 2>/dev/null | awk '/inet6 /{print $2}' | cut -d'/' -f1 | tr '\n' ' ' | sed 's/ *$//')
+
+    # Públicos
+    PUBLIC_IPV4=$(curl -4 -fsS https://ifconfig.co 2>/dev/null || curl -4 -fsS https://api.ipify.org 2>/dev/null || true)
+    PUBLIC_IPV6=$(curl -6 -fsS https://ifconfig.co 2>/dev/null || curl -6 -fsS https://api64.ipify.org 2>/dev/null || true)
+
+    [[ -z "$PUBLIC_IPV4" ]] && log_warning "Não foi possível detectar IPv4 público"
+    [[ -z "$PUBLIC_IPV6" ]] && log_warning "Não foi possível detectar IPv6 público"
+
+    log_info "IPv4 local(ais): ${LOCAL_IPV4S:-nenhum}"
+    log_info "IPv6 local(ais): ${LOCAL_IPV6S:-nenhum}"
+    log_info "IPv4 público: ${PUBLIC_IPV4:-desconhecido}"
+    log_info "IPv6 público: ${PUBLIC_IPV6:-desconhecido}"
 }
 
 check_root() {
@@ -268,47 +292,41 @@ prompt_config() {
     echo ""
     
     # Configurar domínio
-    echo -e "${BLUE}🌐 Configuração do Domínio:${NC}"
-    echo "   • Para produção: use seu domínio real (ex: admin.meusite.com)"
-    echo "   • Para desenvolvimento: use localhost"
-    echo "   • Para acesso local: use o IP do servidor"
+    echo -e "${BLUE}🌐 Configuração do Domínio (opcional):${NC}"
+    echo "   • Você pode pular e usar apenas IP e portas por enquanto."
+    echo "   • Configure o domínio depois, quando desejar habilitar SSL."
     echo ""
-    while true; do
-        read -p "Digite o domínio para o servidor: " input_domain
-        if [[ -z "$input_domain" ]]; then
-            echo -e "${YELLOW}⚠️  Domínio não pode estar vazio. Usando localhost como padrão.${NC}"
-            DOMAIN="localhost"
-            break
-        else
-            DOMAIN="$input_domain"
-            break
-        fi
-    done
+    read -p "Digite o domínio (ou deixe em branco para pular): " input_domain
+    if [[ -n "$input_domain" ]]; then
+        DOMAIN="$input_domain"
+        USE_DOMAIN=true
+    else
+        DOMAIN=""
+        USE_DOMAIN=false
+    fi
     
     echo ""
     
     # Configurar email SSL
-    echo -e "${BLUE}📧 Configuração do Email SSL:${NC}"
-    echo "   • Necessário para certificados Let's Encrypt"
-    echo "   • Use um email válido que você tenha acesso"
-    echo "   • Para localhost, pode usar qualquer email"
-    echo ""
-    while true; do
-        read -p "Digite o email para certificados SSL: " input_email
-        if [[ -z "$input_email" ]]; then
-            echo -e "${YELLOW}⚠️  Email não pode estar vazio. Usando admin@${DOMAIN} como padrão.${NC}"
-            SSL_EMAIL="admin@${DOMAIN}"
-            break
-        else
-            # Validação básica de email
-            if [[ "$input_email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-                SSL_EMAIL="$input_email"
+    if [[ "$USE_DOMAIN" == true ]]; then
+        echo -e "${BLUE}📧 Configuração do Email SSL:${NC}"
+        echo "   • Necessário para certificados Let's Encrypt"
+        while true; do
+            read -p "Digite o email para certificados SSL: " input_email
+            if [[ -z "$input_email" ]]; then
+                echo -e "${YELLOW}⚠️  Email não pode estar vazio. Usando admin@${DOMAIN} como padrão.${NC}"
+                SSL_EMAIL="admin@${DOMAIN}"
                 break
             else
-                echo -e "${RED}❌ Email inválido. Digite um email válido (ex: admin@exemplo.com)${NC}"
+                if [[ "$input_email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+                    SSL_EMAIL="$input_email"
+                    break
+                else
+                    echo -e "${RED}❌ Email inválido. Digite um email válido (ex: admin@exemplo.com)${NC}"
+                fi
             fi
-        fi
-    done
+        done
+    fi
     
     echo ""
     
@@ -328,18 +346,19 @@ prompt_config() {
     echo -e "${GREEN}╔════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║                    Resumo da Configuração                     ║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════════════════════════════╝${NC}"
-    echo -e "${CYAN}🌐 Domínio:${NC}     $DOMAIN"
-    echo -e "${CYAN}📧 Email SSL:${NC}   $SSL_EMAIL"
+        echo -e "${CYAN}🌐 Domínio:${NC}     ${DOMAIN:-(não configurado)}"
+        if [[ "$USE_DOMAIN" == true ]]; then
+            echo -e "${CYAN}📧 Email SSL:${NC}   $SSL_EMAIL"
+        fi
     echo -e "${CYAN}📁 Diretório:${NC}   $INSTALL_DIR"
     echo ""
     
     # Mostrar informações sobre SSL
-    if [[ "$DOMAIN" == "localhost" || "$DOMAIN" == "127.0.0.1" ]]; then
-        echo -e "${YELLOW}⚠️  Aviso: Usando localhost - certificado SSL automático não será configurado${NC}"
-        echo -e "${YELLOW}   Você poderá acessar via HTTP em: http://$DOMAIN${NC}"
+    if [[ "$USE_DOMAIN" == true ]]; then
+        echo -e "${GREEN}✅ Domínio informado. Você poderá habilitar SSL após a instalação.${NC}"
+        echo -e "${GREEN}   Acesso previsto: https://$DOMAIN (quando SSL ativo)${NC}"
     else
-        echo -e "${GREEN}✅ Certificado SSL será configurado automaticamente via Let's Encrypt${NC}"
-        echo -e "${GREEN}   Você poderá acessar via HTTPS em: https://$DOMAIN${NC}"
+        echo -e "${YELLOW}ℹ️  Nenhum domínio configurado. O acesso será por IP e porta 80 (HTTP).${NC}"
     fi
     
     echo ""
@@ -361,7 +380,7 @@ prompt_config() {
                 echo ""
                 break
                 ;;
-            [Nn]|[Nn][Aa][Oo]|[Nn][Oo]|"")
+            [Nn]|[Nn][Aa][Oo]|[Nn][Oo]|""
                 echo -e "${YELLOW}❌ Instalação cancelada pelo usuário${NC}"
                 exit 0
                 ;;
@@ -639,6 +658,14 @@ setup_backend() {
     sudo -u "$SERVICE_USER" bash -c "source venv/bin/activate && pip install -r requirements.txt"
     
     # Criar arquivo de configuração
+    # Prepara variáveis de rede
+    local api_host="0.0.0.0"
+    local api_port="8000"
+    local domain_value="${DOMAIN:-}"
+
+    # Gerar chave JWT forte
+    JWT_SECRET=$(openssl rand -hex 64)
+
     cat > .env << EOF
 # Database
 DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost/$DB_NAME
@@ -647,21 +674,27 @@ DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost/$DB_NAME
 REDIS_URL=redis://localhost:6379/0
 
 # JWT
-JWT_SECRET_KEY=$(generate_password)
+JWT_SECRET_KEY=$JWT_SECRET
 JWT_ALGORITHM=HS256
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=480
 
 # Admin User
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
 
 # Server
-HOST=0.0.0.0
-PORT=8000
+HOST=$api_host
+PORT=$api_port
 DEBUG=false
 
-# CORS
-CORS_ORIGINS=http://localhost,http://$DOMAIN,https://$DOMAIN
+# CORS (IP e domínio, quando disponível)
+CORS_ORIGINS=http://localhost,http://127.0.0.1,http://[::1],http://$PUBLIC_IPV4,http://$PUBLIC_IPV6,http://$domain_value,https://$domain_value
+# Descoberta de rede (informativo)
+PUBLIC_IPV4=${PUBLIC_IPV4}
+PUBLIC_IPV6=${PUBLIC_IPV6}
+LOCAL_IPV4S=${LOCAL_IPV4S}
+LOCAL_IPV6S=${LOCAL_IPV6S}
+DOMAIN=${domain_value}
 EOF
     
     chown "$SERVICE_USER:$SERVICE_USER" .env
@@ -681,10 +714,22 @@ setup_frontend() {
     
     # Configurar ambiente de produção
     log_info "Configurando ambiente de produção..."
-    sudo -u "$SERVICE_USER" cat > src/environments/environment.prod.ts << EOF
+        # Base URLs: por padrão apontar para o mesmo host/origem (Nginx proxy em /api/v1)
+        sudo -u "$SERVICE_USER" cat > src/environments/environment.prod.ts << EOF
 export const environment = {
   production: true,
-  apiUrl: 'https://$DOMAIN/api'
+    // Chamadas irão para o mesmo host via NGINX: /api/v1
+    apiUrl: '/api/v1',
+    apiBaseUrl: '/api',
+    // Para referência/diagnóstico na UI ou futuras configs
+    network: {
+        domain: '${DOMAIN}',
+        httpsEnabled: ${HTTPS_ENABLED},
+        publicIPv4: '${PUBLIC_IPV4}',
+        publicIPv6: '${PUBLIC_IPV6}',
+        localIPv4s: '${LOCAL_IPV4S}',
+        localIPv6s: '${LOCAL_IPV6S}'
+    }
 };
 EOF
     
@@ -772,10 +817,15 @@ EOF
     # Mover arquivos para diretório do NGINX
     log_info "Instalando arquivos do frontend..."
     rm -rf /var/www/html/serveradmin
-    mkdir -p /var/www/html/serveradmin
+    mkdir -p /var/www/html/serveradmin/browser
     
     # Copiar arquivos com verificação de erro
-    if cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/ 2>&1; then
+    if [[ -d "dist/ubuntu-server-admin/browser" ]]; then
+        cp -r dist/ubuntu-server-admin/browser/* /var/www/html/serveradmin/browser/
+    else
+        cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/browser/
+    fi
+    if [[ $? -eq 0 ]]; then
         chown -R www-data:www-data /var/www/html/serveradmin
         log_info "Arquivos copiados com sucesso"
     else
@@ -787,12 +837,12 @@ EOF
     fi
     
     # Verificar se os arquivos foram copiados corretamente
-    if [[ -f "/var/www/html/serveradmin/index.html" ]] || [[ -f "/var/www/html/serveradmin/main.js" ]] || [[ $(ls /var/www/html/serveradmin/ | wc -l) -gt 0 ]]; then
+    if [[ -f "/var/www/html/serveradmin/browser/index.html" ]] || [[ -f "/var/www/html/serveradmin/browser/main.js" ]] || [[ $(ls /var/www/html/serveradmin/browser/ | wc -l) -gt 0 ]]; then
         log "Frontend copiado e configurado com sucesso"
     else
         log_error "Falha ao copiar arquivos do frontend - nenhum arquivo encontrado no destino"
         log_error "Conteúdo do diretório de destino:"
-        ls -la /var/www/html/serveradmin/
+        ls -la /var/www/html/serveradmin/browser/
         exit 1
     fi
 }
@@ -835,62 +885,44 @@ EOF
 configure_nginx() {
     log "Configurando NGINX..."
     
-    cat > /etc/nginx/sites-available/$NGINX_SITE << EOF
+    cat > /etc/nginx/sites-available/$NGINX_SITE << 'EOF'
 server {
     listen 80;
-    server_name $DOMAIN;
-    
-    # Redirect to HTTPS
-    return 301 https://\$server_name\$request_uri;
-}
+    server_name _;
 
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN;
-    
-    # SSL Configuration (will be configured by Certbot)
-    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
-    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
-    
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
-    
     # Frontend (Angular)
+    root /var/www/html/serveradmin/browser;
+    index index.html;
     location / {
-        root /var/www/html/serveradmin;
-        index index.html;
-        try_files \$uri \$uri/ /index.html;
-        
-        # Cache static assets
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
+        try_files $uri $uri/ /index.html;
     }
-    
+
     # Backend API
     location /api/ {
         proxy_pass http://127.0.0.1:8000/;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_redirect off;
         proxy_buffering off;
     }
-    
+
+    # ACME challenge (caso futuramente use certbot com HTTP-01)
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/html/serveradmin;
+    }
+
     # Security
     location ~ /\. {
         deny all;
     }
-    
+
     # Logs
     access_log /var/log/nginx/serveradmin.access.log;
     error_log /var/log/nginx/serveradmin.error.log;
@@ -911,9 +943,9 @@ EOF
 }
 
 setup_ssl() {
-    log "Configurando certificado SSL..."
+    log "Configurando certificado SSL (opcional)..."
     
-    if [[ "$DOMAIN" != "localhost" && "$DOMAIN" != "127.0.0.1" ]]; then
+    if [[ "$USE_DOMAIN" == true && -n "$DOMAIN" ]]; then
         # Tentar corrigir problemas com certbot primeiro
         log_info "Verificando e corrigindo dependências do certbot..."
         
@@ -938,6 +970,7 @@ setup_ssl() {
             # Configurar renovação automática
             systemctl enable certbot.timer 2>/dev/null || true
             systemctl start certbot.timer 2>/dev/null || true
+            HTTPS_ENABLED=true
             log "Certificado SSL configurado para $DOMAIN"
         else
             log_warning "Falha ao obter certificado SSL. Continuando sem SSL..."
@@ -945,7 +978,7 @@ setup_ssl() {
             log_warning "sudo certbot --nginx -d $DOMAIN"
         fi
     else
-        log_warning "Certificado SSL não configurado para localhost"
+    log_warning "SSL não configurado: domínio não informado"
     fi
 }
 
@@ -1163,14 +1196,24 @@ show_summary() {
     echo ""
     
     echo -e "${CYAN}🌐 URLs de Acesso:${NC}"
-    if [[ "$DOMAIN" == "localhost" || "$DOMAIN" == "127.0.0.1" ]]; then
-        echo "   • Frontend: http://$DOMAIN"
-        echo "   • API: http://$DOMAIN/api"
-        echo "   • Documentação: http://$DOMAIN/api/docs"
-    else
+    if [[ "$USE_DOMAIN" == true && "$HTTPS_ENABLED" == true ]]; then
         echo "   • Frontend: https://$DOMAIN"
         echo "   • API: https://$DOMAIN/api"
         echo "   • Documentação: https://$DOMAIN/api/docs"
+    elif [[ "$USE_DOMAIN" == true ]]; then
+        echo "   • Frontend: http://$DOMAIN"
+        echo "   • API: http://$DOMAIN/api"
+        echo "   • Documentação: http://$DOMAIN/api/docs"
+    fi
+    # Além do domínio, exponha por IPs detectados
+    [[ -n "$PUBLIC_IPV4" ]] && echo "   • IPv4 público:  http://$PUBLIC_IPV4"
+    [[ -n "$PUBLIC_IPV6" ]] && echo "   • IPv6 público:  http://[$PUBLIC_IPV6]"
+    # Listar primeiros locais, se existirem
+    if [[ -n "$LOCAL_IPV4S" ]]; then
+        echo "   • IPv4 local(is): $(echo $LOCAL_IPV4S | awk '{print $1}')"
+    fi
+    if [[ -n "$LOCAL_IPV6S" ]]; then
+        echo "   • IPv6 local(is): $(echo $LOCAL_IPV6S | awk '{print $1}')"
     fi
     echo ""
     
@@ -1199,14 +1242,14 @@ show_summary() {
     echo ""
     
     echo -e "${CYAN}🛡️ Configuração de Segurança:${NC}"
-    if [[ "$DOMAIN" != "localhost" && "$DOMAIN" != "127.0.0.1" && "$SKIP_SSL" != true ]]; then
+    if [[ "$USE_DOMAIN" == true && "$HTTPS_ENABLED" == true ]]; then
         echo "   • SSL/TLS:     ✅ Configurado via Let's Encrypt"
         echo "   • Domínio:     $DOMAIN"
         echo "   • Email SSL:   $SSL_EMAIL"
         echo "   • Renovação:   Automática (certbot.timer)"
     else
-        echo "   • SSL/TLS:     ❌ Não configurado (localhost ou --skip-ssl)"
-        echo "   • Acesso:      HTTP apenas"
+        echo "   • SSL/TLS:     ❌ Não configurado"
+        echo "   • Acesso:      HTTP (porta 80)"
     fi
     echo "   • Firewall:    ✅ UFW ativo"
     echo "   • Portas:      22 (SSH), 80 (HTTP), 443 (HTTPS)"
@@ -1333,6 +1376,7 @@ main() {
     check_root
     check_ubuntu
     check_system_health
+    detect_ips
     
     # Configuração (pular se modo automático)
     if [[ "$AUTO_INSTALL" != true ]]; then

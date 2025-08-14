@@ -21,6 +21,28 @@ NC='\033[0m'
 INSTALL_DIR="/opt/ubuntu-server-admin"
 SERVICE_USER="serveradmin"
 BACKUP_DIR="/opt/ubuntu-server-admin-backups"
+DEFAULT_WEB_ROOT="/var/www/html/serveradmin"
+
+detect_web_root() {
+    # Detecta o root atual do NGINX para o site serveradmin
+    local site_conf=""
+    local root_dir=""
+    if [[ -L "/etc/nginx/sites-enabled/serveradmin" ]]; then
+        site_conf=$(readlink -f /etc/nginx/sites-enabled/serveradmin)
+    elif [[ -f "/etc/nginx/sites-available/serveradmin" ]]; then
+        site_conf="/etc/nginx/sites-available/serveradmin"
+    fi
+
+    if [[ -n "$site_conf" && -r "$site_conf" ]]; then
+        root_dir=$(grep -E "^[[:space:]]*root[[:space:]]+" "$site_conf" | head -1 | awk '{print $2}' | tr -d ';')
+    fi
+
+    if [[ -z "$root_dir" ]]; then
+        echo "$DEFAULT_WEB_ROOT"
+    else
+        echo "$root_dir"
+    fi
+}
 
 log() {
     echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
@@ -118,16 +140,28 @@ update_frontend() {
     # Build para produção
     sudo -u "$SERVICE_USER" npm run build
     
-    # Atualizar arquivos do NGINX (usar saída browser do Angular)
-    mkdir -p /var/www/html/serveradmin/browser
-    rm -rf /var/www/html/serveradmin/browser/*
-    if [[ -d "dist/ubuntu-server-admin/browser" ]]; then
-        cp -r dist/ubuntu-server-admin/browser/* /var/www/html/serveradmin/browser/
+    # Atualizar arquivos do NGINX conforme root configurado
+    local web_root
+    web_root=$(detect_web_root)
+    if [[ "$web_root" == */browser ]]; then
+        mkdir -p "$web_root"
+        rm -rf "$web_root"/*
+        if [[ -d "dist/ubuntu-server-admin/browser" ]]; then
+            cp -r dist/ubuntu-server-admin/browser/* "$web_root/"
+        else
+            cp -r dist/ubuntu-server-admin/* "$web_root/"
+        fi
+        chown -R www-data:www-data "${web_root%/browser}"
     else
-        # Compatibilidade com builds antigos sem subpasta browser
-        cp -r dist/ubuntu-server-admin/* /var/www/html/serveradmin/browser/
+        mkdir -p "$web_root"
+        rm -rf "$web_root"/*
+        if [[ -d "dist/ubuntu-server-admin/browser" ]]; then
+            cp -r dist/ubuntu-server-admin/browser/* "$web_root/"
+        else
+            cp -r dist/ubuntu-server-admin/* "$web_root/"
+        fi
+        chown -R www-data:www-data "$web_root"
     fi
-    chown -R www-data:www-data /var/www/html/serveradmin
     
     log "Frontend atualizado"
 }
@@ -253,15 +287,22 @@ rollback() {
         sudo -u postgres psql -d serveradmin < "$BACKUP_DIR/${LATEST_BACKUP}_database.sql"
     fi
     
-    # Restaurar frontend (browser)
-    mkdir -p /var/www/html/serveradmin/browser
-    rm -rf /var/www/html/serveradmin/browser/*
+    # Restaurar frontend respeitando web root configurado
+    local web_root
+    web_root=$(detect_web_root)
+    mkdir -p "$web_root"
+    rm -rf "$web_root"/*
     if [[ -d "$INSTALL_DIR/frontend/ubuntu-server-admin/dist/ubuntu-server-admin/browser" ]]; then
-        cp -r "$INSTALL_DIR/frontend/ubuntu-server-admin/dist/ubuntu-server-admin/browser"/* /var/www/html/serveradmin/browser/
+        cp -r "$INSTALL_DIR/frontend/ubuntu-server-admin/dist/ubuntu-server-admin/browser"/* "$web_root/"
     else
-        cp -r "$INSTALL_DIR/frontend/ubuntu-server-admin/dist/ubuntu-server-admin"/* /var/www/html/serveradmin/browser/
+        cp -r "$INSTALL_DIR/frontend/ubuntu-server-admin/dist/ubuntu-server-admin"/* "$web_root/"
     fi
-    chown -R www-data:www-data /var/www/html/serveradmin
+    # Ajustar ownership
+    if [[ "$web_root" == */browser ]]; then
+        chown -R www-data:www-data "${web_root%/browser}"
+    else
+        chown -R www-data:www-data "$web_root"
+    fi
     
     # Reiniciar serviços
     systemctl start ubuntu-server-admin

@@ -1,6 +1,15 @@
 import os
-from typing import Optional
+from typing import Optional, List
 from pydantic_settings import BaseSettings
+
+
+def _parse_cors_origins() -> List[str]:
+    env_val = os.getenv("CORS_ORIGINS", "").strip()
+    if env_val:
+        # Split by comma and strip spaces
+        return [o.strip() for o in env_val.split(",") if o.strip()]
+    # Default development origins
+    return ["http://localhost:4200", "http://127.0.0.1:4200"]
 
 
 class Settings(BaseSettings):
@@ -9,20 +18,21 @@ class Settings(BaseSettings):
     project_name: str = "Ubuntu Server Admin"
     
     # Security
-    secret_key: str = "your-secret-key-change-in-production"
-    access_token_expire_minutes: int = 30
-    algorithm: str = "HS256"
+    # Use JWT_* env vars for consistency with auth routes
+    secret_key: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+    access_token_expire_minutes: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     
     # Database
-    database_url: str = "sqlite:///./server_admin.db"
+    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./server_admin.db")
     
     # CORS
-    backend_cors_origins: list = ["http://localhost:4200", "http://127.0.0.1:4200"]
+    backend_cors_origins: List[str] = _parse_cors_origins()
     
     # Server
-    host: str = "0.0.0.0"
-    port: int = 8000
-    debug: bool = True
+    host: str = os.getenv("HOST", "0.0.0.0")
+    port: int = int(os.getenv("PORT", "8000"))
+    debug: bool = os.getenv("DEBUG", "True").lower() in ("1", "true", "yes", "on")
     
     class Config:
         env_file = ".env"
