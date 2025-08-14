@@ -202,29 +202,39 @@ def check_sudo_privileges(username: str) -> bool:
         # Admin por ambiente: considerar sudo habilitado quando permitido por configuração
         if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
             return True
-        # Verifica se o usuário está no grupo sudo ou wheel
-        result = subprocess.run(
-            ['groups', username],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        
-        if result.returncode == 0:
-            groups = result.stdout.strip()
-            # Grupos comuns que têm privilégios sudo
-            sudo_groups = ['sudo', 'wheel', 'admin', 'root']
-            return any(group in groups for group in sudo_groups)
-        
-        # Método alternativo: verificar se pode executar sudo
-        result = subprocess.run(
-            ['sudo', '-n', '-l', '-U', username],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        
-        return result.returncode == 0
+
+        # Usuário root sempre tem privilégios
+        try:
+            user_info = pwd.getpwnam(username)
+            if user_info.pw_uid == 0:
+                return True
+        except KeyError:
+            return False
+
+        # Verificar via módulos Python (sem depender do PATH do systemd)
+        sudo_groups = ['sudo', 'wheel', 'admin']
+        user_gid = user_info.pw_gid
+        for gname in sudo_groups:
+            try:
+                g = grp.getgrnam(gname)
+                if username in g.gr_mem or g.gr_gid == user_gid:
+                    return True
+            except KeyError:
+                # Grupo pode não existir nesta distro
+                continue
+
+        # Fallback: tentar 'id -Gn <username>' se disponível
+        import shutil
+        id_bin = shutil.which('id') or '/usr/bin/id'
+        try:
+            result = subprocess.run([id_bin, '-Gn', username], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                groups = result.stdout.strip().split()
+                return any(g in groups for g in ['sudo', 'wheel', 'admin'])
+        except Exception:
+            pass
+
+        return False
         
     except Exception as e:
         print(f"Error checking sudo privileges: {e}")
