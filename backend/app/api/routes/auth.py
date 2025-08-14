@@ -98,8 +98,8 @@ def check_sudo_privileges(username: str) -> bool:
     Verifica se o usuário tem privilégios sudo
     """
     try:
-    # Admin por ambiente: considerar sudo habilitado quando permitido por configuração
-    if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
+        # Admin por ambiente: considerar sudo habilitado quando permitido por configuração
+        if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
             return True
         # Verifica se o usuário está no grupo sudo ou wheel
         result = subprocess.run(
@@ -205,9 +205,9 @@ async def login(request: LoginRequest):
                 message="Usuário ou senha inválidos"
             )
 
-        # Obtém informações do usuário
-        # Admin via env: construir user_info mínimo
-        if ENV_ADMIN_USERNAME and request.username == ENV_ADMIN_USERNAME:
+    # Obtém informações do usuário
+    # Admin via env: construir user_info mínimo
+    if ENV_ADMIN_USERNAME and request.username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
             user_info = {
                 "username": ENV_ADMIN_USERNAME,
                 "uid": 0,
