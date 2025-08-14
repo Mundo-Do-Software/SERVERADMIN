@@ -166,31 +166,48 @@ show_completion_info() {
     log_info "  ✓ PostgreSQL Database"
     log_info "  ✓ Redis Cache"
     
+    # Check if SSL certificate was actually obtained
+    local ssl_status="Not configured"
     if [[ -n "$DOMAIN" ]]; then
-        log_info "  ✓ SSL Certificate for $DOMAIN"
-        echo ""
-        log_info "Your site is available at:"
-        log_info "  https://$DOMAIN"
+        if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
+            ssl_status="✓ SSL Certificate active"
+            log_info "  ✓ SSL Certificate for $DOMAIN"
+        else
+            ssl_status="⚠ SSL Certificate pending DNS"
+            log_info "  ⚠ SSL Certificate for $DOMAIN (pending DNS configuration)"
+        fi
+    fi
+    
+    echo ""
+    log_info "Access URLs:"
+    if [[ -n "$DOMAIN" ]]; then
+        if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
+            log_info "  Primary: https://$DOMAIN"
+            log_info "  Fallback: http://$(curl -s ifconfig.me || echo 'YOUR_SERVER_IP')"
+        else
+            log_info "  Primary: http://$DOMAIN"
+            log_info "  IP: http://$(curl -s ifconfig.me || echo 'YOUR_SERVER_IP')"
+        fi
     else
-        echo ""
-        log_info "Your site is available at:"
-        log_info "  http://$(curl -s ifconfig.me || echo 'YOUR_SERVER_IP')"
+        log_info "  Server: http://$(curl -s ifconfig.me || echo 'YOUR_SERVER_IP')"
     fi
     
     echo ""
     log_info "Configuration files:"
     log_info "  Database: $(dirname "$0")/../config/database.conf"
     log_info "  Redis: $(dirname "$0")/../config/redis.conf"
+    log_info "  NGINX: /etc/nginx/sites-available/$DOMAIN"
     log_info "  Logs: /var/log/serveradmin-install.log"
     
     echo ""
     log_info "Next steps:"
-    if [[ -z "$DOMAIN" ]]; then
-        log_info "  1. Configure your domain's DNS to point to this server"
-        log_info "  2. Run: sudo certbot --nginx -d yourdomain.com"
+    if [[ -n "$DOMAIN" && ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
+        log_info "  1. Update DNS: Point $DOMAIN to $(curl -s ifconfig.me || echo 'YOUR_SERVER_IP')"
+        log_info "  2. Get SSL: sudo certbot --nginx -d $DOMAIN"
+        log_info "  3. Verify: Check https://$DOMAIN"
     fi
-    log_info "  3. Deploy your application to /var/www/html"
-    log_info "  4. Configure NGINX virtual hosts as needed"
+    log_info "  4. Deploy your application to /var/www/html"
+    log_info "  5. Configure additional NGINX virtual hosts as needed"
     
     echo ""
 }

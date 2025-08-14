@@ -31,31 +31,35 @@ setup_ssl_with_domain() {
         exit 1
     }
     
-    # Validate domain format
-    if [[ ! "$domain" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$ ]]; then
+    # Validate domain format (corrigida para aceitar subdomínios brasileiros)
+    if [[ ! "$domain" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]{1,253}[a-zA-Z0-9]\.[a-zA-Z]{2,}$ ]]; then
         log_warn "Domain format may be invalid: $domain"
     fi
     
     # Check if domain points to this server
     log_info "Checking if domain points to this server..."
-    local server_ip=$(curl -s ifconfig.me || echo "")
-    local domain_ip=$(dig +short "$domain" | tail -n1)
+    local server_ip=$(curl -s ifconfig.me || curl -s ipinfo.io/ip || echo "")
+    local domain_ip=$(dig +short "$domain" | grep -E '^[0-9.]+$' | tail -n1)
+    
+    log_info "Server IP: $server_ip"
+    log_info "Domain IP: $domain_ip"
+    
+    # Sempre criar o server block, independente do DNS
+    create_domain_server_block "$domain"
     
     if [[ "$server_ip" != "$domain_ip" ]]; then
         log_warn "Domain $domain does not point to this server ($server_ip)"
         log_warn "Current domain IP: $domain_ip"
-        log_warn "Please update your DNS records and try again later"
+        log_warn "SSL certificate will not be obtained automatically"
+        log_info "After updating DNS records, run: sudo certbot --nginx -d $domain"
         
         # Setup basic SSL without obtaining certificate
         setup_certbot_renewal
         return
     fi
     
-    # Create NGINX server block for the domain
-    create_domain_server_block "$domain"
-    
-    # Obtain SSL certificate
-    log_info "Obtaining SSL certificate for $domain..."
+    # Obtain SSL certificate only if DNS is correct
+    log_info "DNS is correctly configured. Obtaining SSL certificate for $domain..."
     
     local certbot_cmd="certbot --nginx -d $domain --non-interactive --agree-tos"
     
