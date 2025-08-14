@@ -57,6 +57,7 @@ ENV_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # pode ser texto puro ou hash 
 ENV_ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH")  # se fornecido, prioriza hash
 REQUIRE_SYSTEM_USER = os.getenv("REQUIRE_SYSTEM_USER", "true").lower() in ("1", "true", "yes", "on")
 AUTH_DEBUG = os.getenv("AUTH_DEBUG", "false").lower() in ("1", "true", "yes", "on")
+PAM_SERVICES = [s.strip() for s in os.getenv("PAM_SERVICES", "login,su,sshd,sudo,common-auth,system-auth").split(",") if s.strip()]
 
 def _dbg(msg: str):
     if AUTH_DEBUG:
@@ -120,7 +121,8 @@ def verify_user_credentials(username: str, password: str) -> bool:
     try:
         if _pam2_available:
             pamh = PamLib()
-            pam_services = ['login', 'su', 'sshd', 'sudo', 'common-auth', 'system-auth']
+            pam_services = PAM_SERVICES
+            _dbg(f"python-pam using services: {pam_services}")
             for svc in pam_services:
                 try:
                     ok = bool(pamh.authenticate(username, password, service=svc))
@@ -132,7 +134,8 @@ def verify_user_credentials(username: str, password: str) -> bool:
             # fallthrough to simplepam
         if _pam_available:
             # Tenta múltiplos serviços PAM comuns no Ubuntu/Debian/CentOS
-            pam_services = ['login', 'su', 'sshd', 'sudo', 'common-auth', 'system-auth']
+            pam_services = PAM_SERVICES
+            _dbg(f"simplepam using services: {pam_services}")
             for svc in pam_services:
                 try:
                     ok = bool(simplepam.authenticate(username, password, service=svc))
