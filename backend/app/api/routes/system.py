@@ -10,6 +10,10 @@ import os
 import shutil
 import glob
 from app.api.routes.auth import verify_token
+import time
+import tempfile
+import hashlib
+import multiprocessing as mp
 
 router = APIRouter()
 def _which_nvidia_smi() -> Optional[str]:
@@ -485,3 +489,183 @@ async def get_disk_info(current_user: str = Depends(verify_token)):
         return {"disks": disks}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao obter informações de discos: {str(e)}")
+
+
+# =======================
+# Benchmarks simples
+# =======================
+
+def _cpu_benchmark(duration: int = 10, workers: Optional[int] = None) -> Dict[str, Any]:
+    """CPU benchmark: múltiplos processos fazem SHA-256 em loop por 'duration' segundos."""
+    if workers is None or workers <= 0:
+        workers = max(1, psutil.cpu_count(logical=True) or 1)
+
+    def worker(end_time: float, counter: Any):
+        data = b"x" * 4096
+        local_count = 0
+        h = hashlib.sha256
+        while time.time() < end_time:
+            _ = h(data).digest()
+            local_count += 1
+        with counter.get_lock():
+            counter.value += local_count
+
+    end_time = time.time() + max(1, duration)
+    counter = mp.Value('i', 0)
+    procs: List[mp.Process] = []
+    for _ in range(workers):
+        p = mp.Process(target=worker, args=(end_time, counter))
+        p.start()
+        procs.append(p)
+    for p in procs:
+        p.join()
+    total_ops = int(counter.value)
+    ops_per_sec = total_ops / max(1.0, duration)
+    return {"type": "cpu", "workers": workers, "duration": duration, "sha256_ops": total_ops, "ops_per_sec": round(ops_per_sec, 2)}
+
+
+def _disk_benchmark(size_mb: int = 256, tmp_dir: Optional[str] = None) -> Dict[str, Any]:
+    """Disk benchmark: escreve e lê um arquivo temporário de 'size_mb' MB medindo throughput."""
+    size_mb = max(16, min(size_mb, 4096))  # 16MB..4GB
+    tmp_dir = tmp_dir or "/tmp"
+    os.makedirs(tmp_dir, exist_ok=True)
+    path = os.path.join(tmp_dir, "serveradmin_benchmark.bin")
+    buf = b"\0" * (1024 * 1024)  # 1MB buffer (não usa urandom para não ser bound em CPU)
+
+    # Write
+    start = time.time()
+    with open(path, "wb") as f:
+        for _ in range(size_mb):
+            f.write(buf)
+        f.flush()
+        os.fsync(f.fileno())
+    write_sec = time.time() - start
+    write_mb_s = size_mb / write_sec if write_sec > 0 else 0.0
+
+    # Read
+    start = time.time()
+    read_bytes = 0
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(1024 * 1024)
+            if not chunk:
+                break
+            read_bytes += len(chunk)
+    read_sec = time.time() - start
+    read_mb = read_bytes / (1024 * 1024)
+    read_mb_s = read_mb / read_sec if read_sec > 0 else 0.0
+
+    try:
+        os.remove(path)
+    except Exception:
+        pass
+
+    return {
+        "type": "disk",
+        "size_mb": size_mb,
+        "write_sec": round(write_sec, 3),
+        "write_mb_s": round(write_mb_s, 2),
+        "read_sec": round(read_sec, 3),
+        "read_mb_s": round(read_mb_s, 2),
+    }
+
+
+def _memory_benchmark(size_mb: int = 512, duration: int = 5) -> Dict[str, Any]:
+    """Memory benchmark: faz cópias em bloco pela duração definida e estima throughput."""
+    size_mb = max(64, min(size_mb, 8192))
+    block = bytearray(1024 * 1024)  # 1MB bloco
+    blocks = size_mb
+    data = bytearray(size_mb * 1024 * 1024)
+    start = time.time()
+    bytes_copied = 0
+    end_time = start + max(1, duration)
+    while time.time() < end_time:
+        # Copia em blocos de 1MB
+        for i in range(blocks):
+            start_idx = i * len(block)
+            data[start_idx:start_idx + len(block)] = block
+            bytes_copied += len(block)
+    sec = time.time() - start
+    mbps = (bytes_copied / (1024 * 1024)) / sec if sec > 0 else 0.0
+    return {"type": "memory", "size_mb": size_mb, "duration": duration, "mem_copy_mb_s": round(mbps, 2)}
+
+
+def _gpu_benchmark(duration: int = 10) -> Dict[str, Any]:
+    """GPU benchmark: tenta usar gpu-burn/hashcat se presentes; senão informa dependências."""
+    # Detect available tools
+    tool = None
+    for name in ["gpu-burn", "gpu_burn"]:
+        if shutil.which(name):
+            tool = name
+            break
+    if not tool and shutil.which("hashcat"):
+        tool = "hashcat"
+
+    if tool is None:
+        # At least report presence via nvidia-smi
+        present = _which_nvidia_smi() is not None
+        return {
+            "type": "gpu",
+            "available": present,
+            "tool": None,
+            "message": "Ferramenta de benchmark de GPU não encontrada. Instale 'gpu-burn' ou 'hashcat' para realizar um teste.",
+        }
+
+    if tool in ("gpu-burn", "gpu_burn"):
+        try:
+            # gpu-burn utiliza segundos como argumento; captura saída
+            proc = subprocess.run([tool, str(max(1, duration))], capture_output=True, text=True, timeout=max(15, duration + 5))
+            ok = proc.returncode == 0
+            out = (proc.stdout or "") + "\n" + (proc.stderr or "")
+            return {"type": "gpu", "tool": tool, "duration": duration, "success": ok, "output": out[-4000:]}
+        except Exception as e:
+            return {"type": "gpu", "tool": tool, "duration": duration, "success": False, "error": str(e)}
+
+    if tool == "hashcat":
+        try:
+            # Executa um benchmark rápido; --benchmark-all pode ser pesado; limitar tempo não é suportado diretamente.
+            # Rodar um modo leve (ex.: -m 0 MD5) com --benchmark para reduzir carga/tempo.
+            cmd = ["hashcat", "-b", "-m", "0", "--quiet"]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            ok = proc.returncode == 0
+            return {"type": "gpu", "tool": tool, "success": ok, "output": ((proc.stdout or "") + (proc.stderr or ""))[-4000:]}
+        except Exception as e:
+            return {"type": "gpu", "tool": tool, "success": False, "error": str(e)}
+
+    return {"type": "gpu", "success": False, "message": "Nenhum método de benchmark executado"}
+
+
+@router.post("/benchmark")
+async def run_benchmark(
+    payload: Dict[str, Any],
+    current_user: str = Depends(verify_token)
+):
+    """Executa benchmarks simples.
+
+    payload:
+      - type: "cpu" | "disk" | "memory" | "gpu" (default: cpu)
+      - duration: segundos (para cpu/gpu/memory)
+      - size_mb: tamanho do teste (para disk/memory)
+      - threads: número de workers para CPU
+    """
+    try:
+        btype = str(payload.get("type", "cpu")).lower()
+        duration = int(payload.get("duration", 10))
+        size_mb = int(payload.get("size_mb", 256))
+        threads = payload.get("threads")
+        threads = int(threads) if threads is not None else None
+
+        if btype == "cpu":
+            return _cpu_benchmark(duration=duration, workers=threads)
+        elif btype == "disk":
+            return _disk_benchmark(size_mb=size_mb)
+        elif btype == "memory":
+            return _memory_benchmark(size_mb=size_mb, duration=duration)
+        elif btype == "gpu":
+            return _gpu_benchmark(duration=duration)
+        else:
+            raise HTTPException(status_code=400, detail="Tipo de benchmark inválido")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao executar benchmark: {str(e)}")
