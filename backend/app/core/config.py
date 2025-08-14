@@ -1,6 +1,6 @@
 import os
 from typing import Optional, List
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _parse_cors_origins() -> List[str]:
@@ -13,6 +13,15 @@ def _parse_cors_origins() -> List[str]:
 
 
 class Settings(BaseSettings):
+    # Pydantic v2 settings configuration
+    # - extra: ignore unknown env vars (systemd EnvironmentFile may include many keys)
+    # - env_file: load .env next to backend
+    # - case_sensitive: keep env var names as-is
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_file=".env",
+        case_sensitive=True,
+    )
     # API Configuration
     api_v1_str: str = "/api/v1"
     project_name: str = "Ubuntu Server Admin"
@@ -34,9 +43,4 @@ class Settings(BaseSettings):
     port: int = int(os.getenv("PORT", "8000"))
     debug: bool = os.getenv("DEBUG", "True").lower() in ("1", "true", "yes", "on")
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-
-
 settings = Settings()
