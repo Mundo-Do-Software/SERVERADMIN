@@ -56,6 +56,13 @@ as_service_user() {
     fi
 }
 
+# Garante que o host key do GitHub esteja no known_hosts do SERVICE_USER (não interativo)
+ensure_github_known_host() {
+    as_service_user "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts"
+    # Adiciona host key (ed25519 preferencial) sem duplicar
+    as_service_user "ssh-keygen -F github.com >/dev/null 2>&1 || ssh-keyscan -H -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null || true"
+}
+
 detect_web_root() {
     # Detecta o root atual do NGINX para o site serveradmin
     local site_conf=""
@@ -135,12 +142,14 @@ update_code() {
     # Verificar se há mudanças locais (como o usuário do serviço)
     if ! as_service_user "cd '$INSTALL_DIR' && git diff-index --quiet HEAD --"; then
         log_warning "Há mudanças locais não commitadas. Fazendo stash..."
-        as_service_user "cd '$INSTALL_DIR' && git stash --include-untracked"
+        ensure_github_known_host
+        as_service_user "export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' && cd '$INSTALL_DIR' && git stash --include-untracked"
     fi
     
     # Atualizar código
-    as_service_user "cd '$INSTALL_DIR' && git fetch origin"
-    as_service_user "cd '$INSTALL_DIR' && git reset --hard origin/main"
+    ensure_github_known_host
+    as_service_user "export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' && cd '$INSTALL_DIR' && git fetch origin"
+    as_service_user "export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' && cd '$INSTALL_DIR' && git reset --hard origin/main"
     
     log "Código atualizado"
 }
