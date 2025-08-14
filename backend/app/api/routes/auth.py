@@ -3,6 +3,14 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import subprocess
 import jwt
+try:
+    # PyJWT <-> exceptions compatibility
+    from jwt import PyJWTError as _PyJWTError  # type: ignore
+except Exception:
+    try:
+        from jwt.exceptions import PyJWTError as _PyJWTError  # type: ignore
+    except Exception:  # fallback
+        _PyJWTError = Exception  # type: ignore
 import bcrypt
 import os
 from datetime import datetime, timedelta
@@ -185,7 +193,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return username
-    except jwt.PyJWTError:
+    except _PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido",
@@ -205,9 +213,9 @@ async def login(request: LoginRequest):
                 message="Usuário ou senha inválidos"
             )
 
-    # Obtém informações do usuário
-    # Admin via env: construir user_info mínimo
-    if ENV_ADMIN_USERNAME and request.username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
+        # Obtém informações do usuário
+        # Admin via env: construir user_info mínimo
+        if ENV_ADMIN_USERNAME and request.username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
             user_info = {
                 "username": ENV_ADMIN_USERNAME,
                 "uid": 0,
