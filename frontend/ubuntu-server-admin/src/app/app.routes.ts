@@ -52,6 +52,21 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/services/services.component').then(m => m.ServicesComponent)
       },
       {
+        path: 'system/info',
+        redirectTo: '/system',
+        pathMatch: 'full'
+      },
+      {
+        path: 'system/resources',
+        redirectTo: '/system',
+        pathMatch: 'full'
+      },
+      {
+        path: 'system/logs',
+        redirectTo: '/logs',
+        pathMatch: 'full'
+      },
+      {
         path: 'system',
         loadComponent: () => import('./pages/system/system.component').then(m => m.SystemComponent)
       },
