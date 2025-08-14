@@ -6,26 +6,62 @@ import subprocess
 import json
 from datetime import datetime
 import re
+import os
+import shutil
+import glob
 from app.api.routes.auth import verify_token
 
 router = APIRouter()
+def _which_nvidia_smi() -> Optional[str]:
+    """Locate the nvidia-smi binary even if not in PATH (systemd envs)."""
+    # Try PATH first
+    exe = shutil.which("nvidia-smi")
+    if exe:
+        return exe
+    # Common absolute locations
+    candidates = [
+        "/usr/bin/nvidia-smi",
+        "/usr/local/bin/nvidia-smi",
+        "/bin/nvidia-smi",
+        "/usr/local/nvidia/bin/nvidia-smi",
+    ]
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    # Some distros place it under versioned nvidia dirs
+    for path in glob.glob("/usr/lib/nvidia-*/bin/nvidia-smi"):
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def _run_nvidia_smi(args: List[str], timeout: int = 10) -> Optional[subprocess.CompletedProcess]:
+    """Run nvidia-smi with robust PATH/env handling; return CompletedProcess or None."""
+    exe = _which_nvidia_smi()
+    if not exe:
+        return None
+    env = os.environ.copy()
+    extra_paths = [os.path.dirname(exe), "/usr/bin", "/usr/local/bin", "/bin", "/usr/local/nvidia/bin"]
+    env["PATH"] = os.pathsep.join([p for p in extra_paths + [env.get("PATH", "")] if p])
+    try:
+        return subprocess.run([exe] + args, capture_output=True, text=True, timeout=timeout, env=env)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
 
 
 def _nvidia_driver_cuda() -> Dict[str, Optional[str]]:
     """Extrai Driver e CUDA da saída padrão do 'nvidia-smi' (sem args)."""
     info = {"driver_version": None, "cuda_version": None}
-    try:
-        result = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            out = result.stdout
-            m1 = re.search(r"Driver Version:\s*([\d.]+)", out)
-            m2 = re.search(r"CUDA Version:\s*([\d.]+)", out)
-            if m1:
-                info["driver_version"] = m1.group(1)
-            if m2:
-                info["cuda_version"] = m2.group(1)
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
+    result = _run_nvidia_smi([], timeout=5)
+    if result and result.returncode == 0:
+        out = result.stdout
+        m1 = re.search(r"Driver Version:\s*([\d.]+)", out)
+        m2 = re.search(r"CUDA Version:\s*([\d.]+)", out)
+        if m1:
+            info["driver_version"] = m1.group(1)
+        if m2:
+            info["cuda_version"] = m2.group(1)
     return info
 
 
@@ -34,45 +70,58 @@ def get_gpu_info() -> List[Dict[str, Any]]:
     gpus: List[Dict[str, Any]] = []
 
     # NVIDIA via nvidia-smi
-    try:
-        result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=name,pci.bus_id,memory.total,memory.used,memory.free,temperature.gpu,utilization.gpu",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0 and result.stdout.strip():
+    result = _run_nvidia_smi([
+        "--query-gpu=name,pci.bus_id,memory.total,memory.used,memory.free,temperature.gpu,utilization.gpu",
+        "--format=csv,noheader,nounits",
+    ], timeout=10)
+    if result and result.returncode == 0 and result.stdout.strip():
+        drv = _nvidia_driver_cuda()
+        for line in result.stdout.strip().splitlines():
+            if not line.strip():
+                continue
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) >= 7:
+                def _to_int(x: str) -> Optional[int]:
+                    try:
+                        return int(x)
+                    except Exception:
+                        return None
+                gpus.append(
+                    {
+                        "type": "NVIDIA",
+                        "name": parts[0],
+                        "bus_id": parts[1],
+                        "memory_total": _to_int(parts[2]),
+                        "memory_used": _to_int(parts[3]),
+                        "memory_free": _to_int(parts[4]),
+                        "temperature": _to_int(parts[5]),
+                        "utilization": _to_int(parts[6]),
+                        "driver_version": drv.get("driver_version"),
+                        "cuda_version": drv.get("cuda_version"),
+                    }
+                )
+    else:
+        # Try listing GPUs with 'nvidia-smi -L' as a fallback to at least detect presence
+        result_l = _run_nvidia_smi(["-L"], timeout=5)
+        if result_l and result_l.returncode == 0 and result_l.stdout.strip():
             drv = _nvidia_driver_cuda()
-            for line in result.stdout.strip().splitlines():
-                if not line.strip():
-                    continue
-                parts = [part.strip() for part in line.split(",")]
-                if len(parts) >= 7:
-                    def _to_int(x: str) -> Optional[int]:
-                        try:
-                            return int(x)
-                        except Exception:
-                            return None
-                    gpus.append(
-                        {
-                            "type": "NVIDIA",
-                            "name": parts[0],
-                            "bus_id": parts[1],
-                            "memory_total": _to_int(parts[2]),
-                            "memory_used": _to_int(parts[3]),
-                            "memory_free": _to_int(parts[4]),
-                            "temperature": _to_int(parts[5]),
-                            "utilization": _to_int(parts[6]),
-                            "driver_version": drv.get("driver_version"),
-                            "cuda_version": drv.get("cuda_version"),
-                        }
-                    )
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
+            for line in result_l.stdout.strip().splitlines():
+                # Example: "GPU 0: GeForce RTX 3090 (UUID: GPU-...)"
+                m = re.search(r"GPU\s+\d+:\s+(.+?)\s*(\(|$)", line)
+                name = m.group(1).strip() if m else line.strip()
+                gpus.append(
+                    {
+                        "type": "NVIDIA",
+                        "name": name,
+                        "memory_total": None,
+                        "memory_used": None,
+                        "memory_free": None,
+                        "temperature": None,
+                        "utilization": None,
+                        "driver_version": drv.get("driver_version"),
+                        "cuda_version": drv.get("cuda_version"),
+                    }
+                )
 
     # Se não encontrou GPUs NVIDIA, tentar detectar outras GPUs via lspci
     if not gpus:
@@ -209,7 +258,7 @@ def get_temperatures() -> Dict[str, Any]:
     # GPU temps from get_gpu_info()
     try:
         gpus = get_gpu_info()
-        temps["gpus"] = [{"name": g.get("name"), "temperature": g.get("temperature") } for g in gpus]
+        temps["gpus"] = [{"name": g.get("name"), "temperature": g.get("temperature")} for g in gpus]
     except Exception:
         pass
     return temps
