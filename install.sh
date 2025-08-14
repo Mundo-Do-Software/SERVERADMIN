@@ -898,8 +898,10 @@ server {
     }
 
     # Backend API
+    # Preserve the original /api path when proxying to FastAPI
+    # Using proxy_pass without trailing slash keeps the full URI (/api/v1/..)
     location /api/ {
-        proxy_pass http://127.0.0.1:8000/;
+        proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';

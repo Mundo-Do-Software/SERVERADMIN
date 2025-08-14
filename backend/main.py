@@ -67,6 +67,12 @@ async def health_check():
     return {"status": "healthy"}
 
 
+# Convenience health endpoint under the API prefix as well
+@app.get("/api/v1/health")
+async def health_check_v1():
+    return {"status": "healthy"}
+
+
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
