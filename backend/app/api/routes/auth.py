@@ -37,6 +37,11 @@ ENV_ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
 ENV_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # pode ser texto puro ou hash bcrypt
 ENV_ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH")  # se fornecido, prioriza hash
 REQUIRE_SYSTEM_USER = os.getenv("REQUIRE_SYSTEM_USER", "true").lower() in ("1", "true", "yes", "on")
+AUTH_DEBUG = os.getenv("AUTH_DEBUG", "false").lower() in ("1", "true", "yes", "on")
+
+def _dbg(msg: str):
+    if AUTH_DEBUG:
+        print(f"[AUTH] {msg}")
 
 class LoginRequest(BaseModel):
     username: str
@@ -63,15 +68,20 @@ def verify_user_credentials(username: str, password: str) -> bool:
     # 1) Fallback admin por ambiente (somente se NÃO exigir usuário do sistema)
     try:
         if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME and not REQUIRE_SYSTEM_USER:
+            _dbg("Env-admin path attempted")
             # Hash tem prioridade
             if ENV_ADMIN_PASSWORD_HASH:
                 try:
-                    return bcrypt.checkpw(password.encode("utf-8"), ENV_ADMIN_PASSWORD_HASH.encode("utf-8"))
-                except Exception:
-                    pass
+                    ok = bcrypt.checkpw(password.encode("utf-8"), ENV_ADMIN_PASSWORD_HASH.encode("utf-8"))
+                    _dbg(f"Env-admin hash match: {ok}")
+                    return ok
+                except Exception as ex:
+                    _dbg(f"Env-admin hash check error: {ex}")
             # Comparação em texto puro
-            if ENV_ADMIN_PASSWORD is not None and password == ENV_ADMIN_PASSWORD:
-                return True
+            if ENV_ADMIN_PASSWORD is not None:
+                ok = password == ENV_ADMIN_PASSWORD
+                _dbg(f"Env-admin plain match: {ok}")
+                return ok
             # Se usuário admin definido mas senha não confere, retorna False direto
             return False
     except Exception as e:
@@ -80,23 +90,20 @@ def verify_user_credentials(username: str, password: str) -> bool:
     # 2) Usuário do sistema (preferência por PAM)
     try:
         if _pam_available:
-            try:
-                return bool(simplepam.authenticate(username, password, service='login'))
-            except Exception as e:
-                print(f"PAM auth error: {e}")
-                # fallback to 'su' below
-        # Usando su para verificar as credenciais
-        # Este método funciona em sistemas Unix/Linux
-        result = subprocess.run(
-            ['su', username, '-c', 'echo "auth_success"'],
-            input=f'{password}\n',
-            text=True,
-            capture_output=True,
-            timeout=10
-        )
-        return result.returncode == 0 and "auth_success" in result.stdout
-    except subprocess.TimeoutExpired:
-        return False
+            # Tenta múltiplos serviços PAM comuns no Ubuntu/Debian/CentOS
+            pam_services = ['login', 'su', 'sshd', 'sudo', 'common-auth', 'system-auth']
+            for svc in pam_services:
+                try:
+                    ok = bool(simplepam.authenticate(username, password, service=svc))
+                    _dbg(f"PAM service '{svc}' result: {ok}")
+                    if ok:
+                        return True
+                except Exception as e:
+                    _dbg(f"PAM service '{svc}' error: {e}")
+            return False
+        else:
+            _dbg("PAM not available; cannot verify system user credentials")
+            return False
     except Exception as e:
         print(f"Error verifying credentials: {e}")
         return False
