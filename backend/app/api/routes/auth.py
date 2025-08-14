@@ -15,8 +15,13 @@ security = HTTPBearer()
 
 # Configurações JWT
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 horas
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "480"))  # 8 horas
+
+# Admin bootstrap via .env (opcional)
+ENV_ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
+ENV_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")  # pode ser texto puro ou hash bcrypt
+ENV_ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH")  # se fornecido, prioriza hash
 
 class LoginRequest(BaseModel):
     username: str
@@ -35,8 +40,29 @@ class ValidateSudoRequest(BaseModel):
 
 def verify_user_credentials(username: str, password: str) -> bool:
     """
-    Verifica as credenciais do usuário usando o sistema PAM do Linux
+    Verifica credenciais.
+    1) Se ADMIN_USERNAME/ADMIN_PASSWORD estiverem definidos, aceita esse par (bootstrap admin)
+       - Suporta ADMIN_PASSWORD_HASH (bcrypt) ou senha em texto puro em ADMIN_PASSWORD
+    2) Caso contrário, tenta validar como usuário do sistema via 'su'.
     """
+    # 1) Fallback admin por ambiente
+    try:
+        if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME:
+            # Hash tem prioridade
+            if ENV_ADMIN_PASSWORD_HASH:
+                try:
+                    return bcrypt.checkpw(password.encode("utf-8"), ENV_ADMIN_PASSWORD_HASH.encode("utf-8"))
+                except Exception:
+                    pass
+            # Comparação em texto puro
+            if ENV_ADMIN_PASSWORD is not None and password == ENV_ADMIN_PASSWORD:
+                return True
+            # Se usuário admin definido mas senha não confere, retorna False direto
+            return False
+    except Exception as e:
+        print(f"Error validating env admin credentials: {e}")
+
+    # 2) Usuário do sistema (melhor esforço)
     try:
         # Usando su para verificar as credenciais
         # Este método funciona em sistemas Unix/Linux
@@ -59,6 +85,9 @@ def check_sudo_privileges(username: str) -> bool:
     Verifica se o usuário tem privilégios sudo
     """
     try:
+        # Admin por ambiente: considerar sudo habilitado para acesso ao painel
+        if ENV_ADMIN_USERNAME and username == ENV_ADMIN_USERNAME:
+            return True
         # Verifica se o usuário está no grupo sudo ou wheel
         result = subprocess.run(
             ['groups', username],
@@ -156,42 +185,55 @@ async def login(request: LoginRequest):
     Endpoint de login que verifica credenciais e privilégios sudo
     """
     try:
-        # Verifica as credenciais do usuário
+        # Verifica as credenciais do usuário (com suporte a admin via .env)
         if not verify_user_credentials(request.username, request.password):
             return AuthResponse(
                 success=False,
                 message="Usuário ou senha inválidos"
             )
-        
+
         # Obtém informações do usuário
-        user_info = get_user_info(request.username)
+        # Admin via env: construir user_info mínimo
+        if ENV_ADMIN_USERNAME and request.username == ENV_ADMIN_USERNAME:
+            user_info = {
+                "username": ENV_ADMIN_USERNAME,
+                "uid": 0,
+                "gid": 0,
+                "home": "/var/lib/ubuntu-server-admin",
+                "shell": "/bin/bash",
+                "groups": ["sudo", "admin"],
+                "sudo": True,
+            }
+        else:
+            user_info = get_user_info(request.username)
+
         if not user_info:
             return AuthResponse(
                 success=False,
                 message="Usuário não encontrado no sistema"
             )
-        
+
         # Verifica privilégios sudo se necessário
         if request.require_sudo and not user_info["sudo"]:
             return AuthResponse(
                 success=False,
                 message="Usuário não possui privilégios sudo necessários"
             )
-        
+
         # Cria token JWT
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": request.username, "sudo": user_info["sudo"]},
             expires_delta=access_token_expires
         )
-        
+
         return AuthResponse(
             success=True,
             token=access_token,
             user=user_info,
             message="Login realizado com sucesso"
         )
-        
+
     except Exception as e:
         print(f"Login error: {e}")
         return AuthResponse(
