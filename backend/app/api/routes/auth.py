@@ -3,6 +3,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import subprocess
 import jwt
+from pathlib import Path
+from dotenv import load_dotenv
 try:
     # PyJWT <-> exceptions compatibility
     from jwt import PyJWTError as _PyJWTError  # type: ignore
@@ -23,6 +25,15 @@ try:
 except Exception:
     simplepam = None
     _pam_available = False
+
+"""Auth routes with system-user and optional env-admin support."""
+
+# Ensure backend/.env is loaded so os.getenv picks values when running via systemd
+try:
+    _backend_dir = Path(__file__).resolve().parents[4]
+    load_dotenv(_backend_dir / ".env")
+except Exception:
+    pass
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
@@ -88,6 +99,14 @@ def verify_user_credentials(username: str, password: str) -> bool:
         print(f"Error validating env admin credentials: {e}")
 
     # 2) Usuário do sistema (preferência por PAM)
+    # Antes, verifica se o usuário existe localmente
+    try:
+        pwd.getpwnam(username)
+        _dbg(f"pwd.getpwnam found user '{username}'")
+    except KeyError:
+        _dbg(f"pwd.getpwnam: user '{username}' not found")
+        return False
+
     try:
         if _pam_available:
             # Tenta múltiplos serviços PAM comuns no Ubuntu/Debian/CentOS
