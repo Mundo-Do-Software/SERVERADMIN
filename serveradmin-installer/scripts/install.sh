@@ -1,231 +1,62 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# =========================
-# Configuration variables
-# =========================
-DOMAIN=""
-EMAIL=""
-SKIP_SSL=false
-INTERACTIVE=true
+# ==============================================================================
+# Ubuntu Server Admin - Script de Instalação Modular
+# Baseado no quick-install.sh funcional
+# ==============================================================================
 
-# =========================
-# Load utility scripts
-# =========================
+# Configurações
+DOMAIN="${DOMAIN:-server.mundodosoftware.com.br}"
+
+# Carregar módulos
 source "$(dirname "$0")/utils/colors.sh"
-source "$(dirname "$0")/utils/logging.sh"
+source "$(dirname "$0")/utils/logging.sh" 
 source "$(dirname "$0")/utils/system_checks.sh"
-
-# =========================
-# Load component scripts
-# =========================
+source "$(dirname "$0")/components/dependencies.sh"
+source "$(dirname "$0")/components/database_setup.sh"
+source "$(dirname "$0")/components/application_setup.sh"
 source "$(dirname "$0")/components/nginx_setup.sh"
-source "$(dirname "$0")/components/postgresql_setup.sh"
-source "$(dirname "$0")/components/redis_setup.sh"
-source "$(dirname "$0")/components/ssl_setup.sh"
+source "$(dirname "$0")/components/service_setup.sh"
+source "$(dirname "$0")/components/firewall_setup.sh"
 
-# =========================
-# Help function
-# =========================
-show_help() {
-    cat << EOF
-Usage: $0 [OPTIONS]
-
-Options:
-    -d, --domain DOMAIN     Set domain name for SSL certificate
-    -e, --email EMAIL       Set email for SSL certificate
-    --skip-ssl              Skip SSL configuration
-    --non-interactive       Run without user prompts
-    -h, --help              Show this help message
-
-Examples:
-    $0                                    # Interactive installation
-    $0 -d example.com -e admin@example.com
-    $0 --skip-ssl                         # Install without SSL
-    $0 --non-interactive                  # Silent installation
-
-EOF
-}
-
-# =========================
-# Parse command line arguments
-# =========================
-parse_arguments() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -d|--domain)
-                DOMAIN="$2"
-                shift 2
-                ;;
-            -e|--email)
-                EMAIL="$2"
-                shift 2
-                ;;
-            --skip-ssl)
-                SKIP_SSL=true
-                shift
-                ;;
-            --non-interactive)
-                INTERACTIVE=false
-                shift
-                ;;
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            *)
-                log_error "Unknown option: $1"
-                show_help
-                exit 1
-                ;;
-        esac
-    done
-}
-
-# =========================
-# Interactive configuration
-# =========================
-interactive_config() {
-    if [[ "$INTERACTIVE" == "true" ]]; then
-        log_info "=== Server Admin Configuration ==="
-        
-        # Ask for domain
-        if [[ -z "$DOMAIN" ]]; then
-            echo -n "Enter your domain name (or press Enter to skip SSL): "
-            read -r DOMAIN
-        fi
-        
-        # Ask for email if domain is provided
-        if [[ -n "$DOMAIN" && -z "$EMAIL" ]]; then
-            echo -n "Enter your email for SSL certificate: "
-            read -r EMAIL
-        fi
-        
-        # Confirm settings
-        echo ""
-        log_info "Configuration Summary:"
-        log_info "Domain: ${DOMAIN:-"Not configured"}"
-        log_info "Email: ${EMAIL:-"Not configured"}"
-        log_info "SSL: $([ -n "$DOMAIN" ] && echo "Enabled" || echo "Disabled")"
-        echo ""
-        
-        echo -n "Continue with installation? (y/N): "
-        read -r confirm
-        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-            log_info "Installation cancelled by user"
-            exit 0
-        fi
-    fi
-}
-
-# =========================
-# Main installation function
-# =========================
+# Função principal
 main() {
-    log_info "Starting Server Admin installation..."
-    log_info "Target System: Ubuntu 24.04 Server"
-    
-    # Parse command line arguments
-    parse_arguments "$@"
-    
-    # Interactive configuration
-    interactive_config
-    
-    # Perform system checks
+    clear
+    echo -e "${BLUE}╔══════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║       Ubuntu Server Admin Setup         ║${NC}"
+    echo -e "${BLUE}║          Instalação Modular             ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Executar instalação
     check_system_health
-    
-    # Install components
-    log_info "Installing system components..."
-    install_nginx
-    install_postgresql
-    install_redis
-    
-    # Setup SSL if domain is provided
-    if [[ -n "$DOMAIN" && "$SKIP_SSL" != "true" ]]; then
-        setup_ssl_with_domain "$DOMAIN" "$EMAIL"
-    elif [[ "$SKIP_SSL" != "true" ]]; then
-        setup_ssl
-    fi
-    
-    # Display final information
-    show_completion_info
-}
+    install_dependencies
+    setup_user
+    setup_database
+    setup_application
+    setup_nginx
+    setup_service
+    setup_firewall
 
-# =========================
-# Show completion information
-# =========================
-show_completion_info() {
+    # Resultado final
     echo ""
-    log_success "======================================"
-    log_success "Server Admin installation completed!"
-    log_success "======================================"
+    echo -e "${GREEN}INSTALAÇÃO CONCLUÍDA${NC}"
+    echo -e "${BLUE}🌍 Acesse: http://$DOMAIN${NC}"
+    echo -e "${BLUE}📱 API: http://$DOMAIN/api${NC}"
+    echo -e "${BLUE}📚 Docs: http://$DOMAIN/api/docs${NC}"
+    echo ""
+    echo -e "${YELLOW}🔐 Credenciais padrão: admin / admin123${NC}"
     echo ""
     
-    log_info "Services installed and running:"
-    log_info "  ✓ NGINX Web Server"
-    log_info "  ✓ PostgreSQL Database"
-    log_info "  ✓ Redis Cache"
-    
-    # Check if SSL certificate was actually obtained
-    local ssl_status="Not configured"
-    if [[ -n "$DOMAIN" ]]; then
-        if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
-            ssl_status="✓ SSL Certificate active"
-            log_info "  ✓ SSL Certificate for $DOMAIN"
-        else
-            ssl_status="⚠ SSL Certificate pending DNS"
-            log_info "  ⚠ SSL Certificate for $DOMAIN (pending DNS configuration)"
-        fi
-    fi
-    
-    echo ""
-    log_info "Access URLs:"
-    if [[ -n "$DOMAIN" ]]; then
-        if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
-            log_info "  Primary: https://$DOMAIN"
-            log_info "  Fallback: http://$(curl -s ifconfig.me || echo 'YOUR_SERVER_IP')"
-        else
-            log_info "  Primary: http://$DOMAIN"
-            log_info "  IP: http://$(curl -s ifconfig.me || echo 'YOUR_SERVER_IP')"
-        fi
+    # Verificação final
+    log "Verificando serviços..."
+    if systemctl is-active --quiet ubuntu-server-admin nginx postgresql redis-server; then
+        log_success "Todos os serviços estão rodando!"
     else
-        log_info "  Server: http://$(curl -s ifconfig.me || echo 'YOUR_SERVER_IP')"
+        log_warning "Alguns serviços podem precisar de atenção"
     fi
-    
-    echo ""
-    log_info "Configuration files:"
-    log_info "  Database: $(dirname "$0")/../config/database.conf"
-    log_info "  Redis: $(dirname "$0")/../config/redis.conf"
-    log_info "  NGINX: /etc/nginx/sites-available/$DOMAIN"
-    log_info "  Logs: /var/log/serveradmin-install.log"
-    
-    echo ""
-    log_info "Next steps:"
-    if [[ -n "$DOMAIN" && ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
-        log_info "  1. Update DNS: Point $DOMAIN to $(curl -s ifconfig.me || echo 'YOUR_SERVER_IP')"
-        log_info "  2. Get SSL: sudo certbot --nginx -d $DOMAIN"
-        log_info "  3. Verify: Check https://$DOMAIN"
-    fi
-    log_info "  4. Deploy your application to /var/www/html"
-    log_info "  5. Configure additional NGINX virtual hosts as needed"
-    
-    echo ""
 }
 
-# =========================
-# Error handler
-# =========================
-error_handler() {
-    log_error "Installation failed at line $1"
-    log_error "Check the logs at /var/log/serveradmin-install.log"
-    log_error "You can re-run the installer after fixing any issues"
-    exit 1
-}
-
-# Set error trap
-trap 'error_handler $LINENO' ERR
-
-# =========================
-# Execute main function
-# =========================
+# Executar
 main "$@"
