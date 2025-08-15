@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Verificações de sistema baseadas no quick-install.sh
+source "$(dirname "${BASH_SOURCE[0]}")/colors.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/logging.sh"
 
 check_root() {
     if [[ $EUID -ne 0 ]]; then

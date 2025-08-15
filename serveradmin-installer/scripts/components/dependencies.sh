@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Instalação de dependências baseada no quick-install.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../utils/logging.sh"
 
 install_dependencies() {
     log "Instalando dependências..."

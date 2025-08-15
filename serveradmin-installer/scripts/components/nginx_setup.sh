@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Configuração do NGINX baseada no quick-install.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../utils/logging.sh"
 
 setup_nginx() {
     log "Configurando NGINX..."
